@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { supabase, isSupabaseConfigured } from "@/services/supabaseClient";
-import { restGet, restPatch, restUpsert } from "@/services/supabaseRest";
+import { restGet, restUpsert } from "@/services/supabaseRest";
 import type { User, Session } from "@supabase/supabase-js";
 
 export interface UserProfile {
@@ -138,18 +138,25 @@ export const useAuth = create<AuthState>()((set, get) => ({
     if (!isSupabaseConfigured()) return { error: "Supabase não configurado." };
 
     try {
-      await restPatch(
-        "profiles",
-        { column: "id", value: user.id },
-        { ...data, updated_at: new Date().toISOString() },
-      );
+      // Upsert: cria o perfil se não existir, atualiza se já existir
+      await restUpsert("profiles", {
+        id: user.id,
+        ...data,
+        // Converte strings vazias para null em campos de tipo date/text opcionais
+        birth_date: data.birth_date || null,
+        cpf:        data.cpf        || null,
+        phone:      data.phone      || null,
+        updated_at: new Date().toISOString(),
+      });
     } catch (err) {
       return { error: err instanceof Error ? err.message : "Erro ao atualizar perfil." };
     }
 
     // Atualiza estado local
     set((s) => ({
-      profile: s.profile ? { ...s.profile, ...data } : s.profile,
+      profile: s.profile
+        ? { ...s.profile, ...data }
+        : { id: user.id, email: user.email ?? "", name: data.name ?? "", cpf: data.cpf ?? null, phone: data.phone ?? null, birth_date: data.birth_date ?? null },
     }));
     return {};
   },

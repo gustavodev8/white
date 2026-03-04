@@ -1,4 +1,4 @@
-import { restGet, restPost, restPostMany } from "./supabaseRest";
+import { restGet, restPost, restPostMany, restPatch } from "./supabaseRest";
 import { isSupabaseConfigured } from "./supabaseClient";
 
 /* ── Tipos ─────────────────────────────────────────────────────── */
@@ -30,7 +30,11 @@ export interface OrderInput {
   payment_installments: number;
   subtotal:             number;
   discount:             number;
+  shipping_cost?:       number;
   total:                number;
+  payment_code?:        string | null;
+  payment_qr_url?:      string | null;
+  vendedor_nome?:       string | null;
   items:                OrderItemInput[];
 }
 
@@ -61,6 +65,10 @@ export interface Order {
   shipping_cost:         number;
   total:                 number;
   status:                "pending" | "processing" | "shipped" | "delivered" | "cancelled";
+  tracking_code:         string | null;
+  payment_code:          string | null;
+  payment_qr_url:        string | null;
+  vendedor_nome:         string | null;
   created_at:            string;
   order_items:           OrderItem[];
 }
@@ -87,9 +95,13 @@ export async function createOrder(input: OrderInput): Promise<{ order: Order | n
       payment_installments:  input.payment_installments,
       subtotal:              input.subtotal,
       discount:              input.discount,
-      shipping_cost:         0,
+      shipping_cost:         input.shipping_cost ?? 0,
       total:                 input.total,
       status:                "pending",
+      tracking_code:         null,
+      payment_code:          input.payment_code ?? null,
+      payment_qr_url:        input.payment_qr_url ?? null,
+      vendedor_nome:         input.vendedor_nome ?? null,
       created_at:            new Date().toISOString(),
       order_items:           input.items.map((i) => ({ ...i, id: crypto.randomUUID(), order_id: "" })),
     };
@@ -115,9 +127,12 @@ export async function createOrder(input: OrderInput): Promise<{ order: Order | n
       payment_installments:  input.payment_installments,
       subtotal:              input.subtotal,
       discount:              input.discount,
-      shipping_cost:         0,
+      shipping_cost:         input.shipping_cost ?? 0,
       total:                 input.total,
       status:                "pending",
+      payment_code:          input.payment_code  ?? null,
+      payment_qr_url:        input.payment_qr_url ?? null,
+      vendedor_nome:         input.vendedor_nome  ?? null,
     });
 
     // 2. Insere os itens em lote
@@ -173,6 +188,41 @@ export async function fetchOrderById(orderId: string): Promise<Order | null> {
   } catch {
     return null;
   }
+}
+
+/* ── fetchAllOrders (admin) ─────────────────────────────────────── */
+export async function fetchAllOrders(): Promise<Order[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    return await restGet<Order>("orders", {
+      select: "*,order_items(*)",
+      order:  "created_at.desc",
+    });
+  } catch {
+    return [];
+  }
+}
+
+/* ── updateOrderStatus (admin) ──────────────────────────────────── */
+export async function updateOrderStatus(
+  orderId: string,
+  status: Order["status"],
+): Promise<void> {
+  await restPatch("orders", { column: "id", value: orderId }, {
+    status,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+/* ── updateOrderTracking (admin) ────────────────────────────────── */
+export async function updateOrderTracking(
+  orderId: string,
+  trackingCode: string,
+): Promise<void> {
+  await restPatch("orders", { column: "id", value: orderId }, {
+    tracking_code: trackingCode.trim() || null,
+    updated_at:    new Date().toISOString(),
+  });
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────── */

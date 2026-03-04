@@ -9,6 +9,7 @@ import { useCart, cartTotal, cartCount } from "@/hooks/useCart";
 import { useAuth }                       from "@/hooks/useAuth";
 import { createOrder }                   from "@/services/ordersService";
 import { createPayment }                 from "@/services/paymentService";
+import { calculateShipping, shippingLabel, FREE_SHIPPING_THRESHOLD } from "@/services/shippingService";
 import Header                            from "@/components/Header";
 
 const fmt = (v: number) =>
@@ -419,8 +420,9 @@ export default function CheckoutPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pixDiscount = payment === "pix" ? total * 0.05 : 0;
-  const finalTotal  = total - pixDiscount;
+  const pixDiscount  = payment === "pix" ? total * 0.05 : 0;
+  const shippingCost = calculateShipping(uf, total);
+  const finalTotal   = total - pixDiscount + shippingCost;
 
   // ── Busca CEP ───────────────────────────────────────────────────
   async function handleCepSearch() {
@@ -506,7 +508,10 @@ export default function CheckoutPage() {
           payment_installments:  1,
           subtotal:              total,
           discount:              pixDiscount,
+          shipping_cost:         shippingCost,
           total:                 finalTotal,
+          payment_code:          payResult.pixCode || payResult.boletoCode || null,
+          payment_qr_url:        payResult.pixQrCodeUrl || null,
           items: items.map((i) => ({
             product_id:       i.id,
             product_name:     i.name,
@@ -792,8 +797,24 @@ export default function CheckoutPage() {
                 )}
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Frete</span>
-                  <span className="text-green-600 font-medium">Grátis</span>
+                  {!uf ? (
+                    <span className="text-gray-400 text-xs italic">Selecione o estado</span>
+                  ) : shippingCost === 0 ? (
+                    <span className="text-green-600 font-medium">Gratis</span>
+                  ) : (
+                    <span className="text-gray-700 font-medium">{fmt(shippingCost)}</span>
+                  )}
                 </div>
+                {total < FREE_SHIPPING_THRESHOLD && uf && shippingCost > 0 && (
+                  <p className="text-[11px] text-gray-400 text-right">
+                    Frete gratis em compras acima de {fmt(FREE_SHIPPING_THRESHOLD)}
+                  </p>
+                )}
+                {total >= FREE_SHIPPING_THRESHOLD && uf && (
+                  <p className="text-[11px] text-green-600 text-right">
+                    Frete gratis aplicado
+                  </p>
+                )}
               </div>
 
               <div className="h-px bg-gray-100" />

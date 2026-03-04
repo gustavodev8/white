@@ -3,9 +3,11 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   ChevronRight, User, ShoppingBag, LogOut, CheckCircle2,
   Package, Loader2, AlertCircle, ChevronDown, ChevronUp, Edit3, Save,
+  Truck, Copy, Check, ExternalLink, Smartphone, FileText, XCircle,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { fetchUserOrders, STATUS_LABEL, STATUS_COLOR } from "@/services/ordersService";
+import { fetchUserOrders, updateOrderStatus, STATUS_LABEL, STATUS_COLOR } from "@/services/ordersService";
+import { isLocalOrder } from "@/services/shippingService";
 import Header from "@/components/Header";
 import type { Order } from "@/services/ordersService";
 
@@ -122,15 +124,193 @@ function ProfileTab() {
   );
 }
 
+/* ── Copiar codigo ───────────────────────────────────────────── */
+function CopyCode({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+  return (
+    <button
+      onClick={copy}
+      className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all ${
+        copied ? "bg-green-100 text-green-700" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+      }`}
+    >
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      {copied ? "Copiado" : "Copiar"}
+    </button>
+  );
+}
+
+/* ── Helpers de expiração ────────────────────────────────────── */
+const PIX_EXPIRY_MS    = 24 * 60 * 60 * 1000;       // 24 horas
+const BOLETO_EXPIRY_MS = 3  * 24 * 60 * 60 * 1000;  // 3 dias
+
+function isPaymentExpired(createdAt: string, method: string): boolean {
+  const created = new Date(createdAt).getTime();
+  const expiry  = method === "boleto" ? BOLETO_EXPIRY_MS : PIX_EXPIRY_MS;
+  return Date.now() > created + expiry;
+}
+
+/* ── Secao de pagamento pendente ─────────────────────────────── */
+function PendingPaymentSection({ order }: { order: Order }) {
+  if (order.status !== "pending" || !order.payment_code) return null;
+
+  /* Código expirado ───────────────────────────────────────────── */
+  if (isPaymentExpired(order.created_at, order.payment_method)) {
+    const label = order.payment_method === "boleto" ? "Boleto" : "Código PIX";
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-start gap-3">
+        <AlertCircle className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-xs font-semibold text-gray-600">
+            {label} expirado
+          </p>
+          <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">
+            O prazo para pagamento deste pedido encerrou. Entre em contato com
+            a loja para reprocessar o pagamento.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  /* PIX ───────────────────────────────────────────────────────── */
+  if (order.payment_method === "pix") {
+    const qrSrc =
+      order.payment_qr_url ||
+      `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+        order.payment_code,
+      )}&bgcolor=ffffff&margin=8`;
+
+    // tempo restante até expirar
+    const expiresAt  = new Date(order.created_at).getTime() + PIX_EXPIRY_MS;
+    const msLeft     = Math.max(0, expiresAt - Date.now());
+    const hLeft      = Math.floor(msLeft / 3_600_000);
+    const mLeft      = Math.floor((msLeft % 3_600_000) / 60_000);
+    const timeLabel  = hLeft > 0 ? `${hLeft}h ${mLeft}min` : `${mLeft} min`;
+
+    return (
+      <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-bold text-green-800 flex items-center gap-1.5">
+            <Smartphone className="h-3.5 w-3.5" /> PIX — aguardando pagamento
+          </p>
+          <span className="text-[11px] font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+            ⏱ expira em {timeLabel}
+          </span>
+        </div>
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          {/* QR Code */}
+          <div className="bg-white rounded-xl p-2 border border-green-200 shadow-sm shrink-0">
+            <img
+              src={qrSrc}
+              alt="QR Code PIX"
+              className="w-36 h-36 rounded-lg"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src =
+                  `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+                    order.payment_code ?? "PIX",
+                  )}&bgcolor=ffffff&margin=8`;
+              }}
+            />
+          </div>
+          {/* Código copia e cola */}
+          <div className="flex-1 space-y-3 w-full">
+            <p className="text-xs text-green-700 leading-relaxed">
+              Escaneie o QR Code ou copie o código abaixo para pagar no app do
+              seu banco.
+            </p>
+            <div className="bg-white border border-green-200 rounded-xl p-3 flex items-start gap-2">
+              <p className="flex-1 text-[11px] font-mono text-gray-500 break-all select-all leading-relaxed">
+                {order.payment_code}
+              </p>
+              <CopyCode code={order.payment_code} />
+            </div>
+            <p className="text-[11px] text-green-600">
+              ✓ Abra o banco · Acesse PIX · Escaneie ou cole o código
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* Boleto ────────────────────────────────────────────────────── */
+  if (order.payment_method === "boleto") {
+    const dueDate = new Date(
+      new Date(order.created_at).getTime() + BOLETO_EXPIRY_MS,
+    );
+    const dueFmt = dueDate.toLocaleDateString("pt-BR");
+
+    // dias restantes
+    const msLeft  = Math.max(0, dueDate.getTime() - Date.now());
+    const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
+    const urgency  = daysLeft <= 1;
+
+    return (
+      <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+        <p className="text-xs font-bold text-orange-800 mb-3 flex items-center gap-1.5">
+          <FileText className="h-3.5 w-3.5" /> Boleto — aguardando pagamento
+        </p>
+        <div className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 mb-3 ${
+          urgency
+            ? "bg-red-100 text-red-700 border border-red-200"
+            : "bg-orange-100 text-orange-700"
+        }`}>
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          Vencimento: <strong>{dueFmt}</strong>
+          {daysLeft > 0 && (
+            <span className="ml-1">
+              — {daysLeft === 1 ? "vence hoje!" : `${daysLeft} dias restantes`}
+            </span>
+          )}
+        </div>
+        <div className="bg-white border border-orange-200 rounded-xl p-3 flex items-start gap-2">
+          <p className="flex-1 text-[11px] font-mono text-gray-500 break-all select-all leading-relaxed">
+            {order.payment_code}
+          </p>
+          <CopyCode code={order.payment_code} />
+        </div>
+        <p className="text-[11px] text-orange-600 mt-2">
+          Pague em qualquer banco, lotérica ou app de internet banking.
+        </p>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 /* ── Card de pedido ──────────────────────────────────────────── */
-function OrderCard({ order }: { order: Order }) {
-  const [open, setOpen] = useState(false);
+function OrderCard({ order, onCancelled }: { order: Order; onCancelled: () => void }) {
+  const [open,          setOpen]          = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelling,    setCancelling]    = useState(false);
+  const [cancelError,   setCancelError]   = useState("");
 
   const paymentLabel: Record<string, string> = {
     pix:    "PIX",
     credit: "Cartão de crédito",
     boleto: "Boleto bancário",
   };
+
+  async function handleCancel() {
+    setCancelling(true);
+    setCancelError("");
+    try {
+      await updateOrderStatus(order.id, "cancelled");
+      onCancelled();
+    } catch {
+      setCancelError("Não foi possível cancelar. Tente novamente.");
+      setCancelling(false);
+      setConfirmCancel(false);
+    }
+  }
 
   return (
     <div className="border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
@@ -188,6 +368,39 @@ function OrderCard({ order }: { order: Order }) {
             </ul>
           </div>
 
+          {/* Pagamento pendente — QR Code PIX ou boleto */}
+          <PendingPaymentSection order={order} />
+
+          {/* Rastreio — apenas para pedidos fora de Alagoinhas/BA */}
+          {!isLocalOrder(order.shipping_city, order.shipping_state) && order.tracking_code ? (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+              <p className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1.5">
+                <Truck className="h-3.5 w-3.5" /> Rastreamento do pedido
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono text-sm font-bold text-gray-800 tracking-wider">
+                  {order.tracking_code}
+                </span>
+                <CopyCode code={order.tracking_code} />
+                <a
+                  href={`https://rastreamento.correios.com.br/app/resultado.app?objetos=${order.tracking_code}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                >
+                  <ExternalLink className="h-3 w-3" /> Rastrear
+                </a>
+              </div>
+            </div>
+          ) : !isLocalOrder(order.shipping_city, order.shipping_state) && (order.status === "shipped" || order.status === "processing") ? (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center gap-2">
+              <Truck className="h-4 w-4 text-gray-400 shrink-0" />
+              <p className="text-xs text-gray-500">
+                Codigo de rastreio sera disponibilizado em breve.
+              </p>
+            </div>
+          ) : null}
+
           {/* Entrega */}
           <div>
             <p className="text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Entrega</p>
@@ -209,13 +422,64 @@ function OrderCard({ order }: { order: Order }) {
                 <span>Desconto</span><span>-{fmt(order.discount)}</span>
               </div>
             )}
-            <div className="flex justify-between text-xs text-green-600">
-              <span>Frete</span><span>Grátis</span>
+            <div className="flex justify-between text-xs">
+              <span className={order.shipping_cost > 0 ? "text-gray-500" : "text-green-600"}>Frete</span>
+              <span className={order.shipping_cost > 0 ? "text-gray-700" : "text-green-600"}>
+                {order.shipping_cost > 0 ? fmt(order.shipping_cost) : "Grátis"}
+              </span>
             </div>
             <div className="flex justify-between text-sm font-bold text-gray-800 pt-1 border-t border-gray-100">
               <span>Total</span><span>{fmt(order.total)}</span>
             </div>
           </div>
+
+          {/* ── Cancelar pedido (somente quando aguardando pagamento) ── */}
+          {order.status === "pending" && (
+            <div className="pt-1">
+              {!confirmCancel ? (
+                <button
+                  onClick={() => setConfirmCancel(true)}
+                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  <XCircle className="h-3.5 w-3.5" />
+                  Cancelar pedido
+                </button>
+              ) : (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 space-y-2.5">
+                  <p className="text-xs font-semibold text-red-700 flex items-center gap-1.5">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    Tem certeza que deseja cancelar este pedido?
+                  </p>
+                  <p className="text-[11px] text-red-500 leading-relaxed">
+                    Esta ação não pode ser desfeita. Caso já tenha efetuado o pagamento,
+                    entre em contato com a loja para solicitar o estorno.
+                  </p>
+                  {cancelError && (
+                    <p className="text-[11px] text-red-600 font-medium">{cancelError}</p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleCancel}
+                      disabled={cancelling}
+                      className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-full transition-colors disabled:opacity-60"
+                    >
+                      {cancelling
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <XCircle className="h-3.5 w-3.5" />}
+                      {cancelling ? "Cancelando..." : "Sim, cancelar"}
+                    </button>
+                    <button
+                      onClick={() => { setConfirmCancel(false); setCancelError(""); }}
+                      disabled={cancelling}
+                      className="text-xs text-gray-500 hover:text-gray-700 font-medium px-3 py-2 rounded-full border border-gray-200 hover:border-gray-300 transition-colors disabled:opacity-60"
+                    >
+                      Não, manter
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -235,6 +499,12 @@ function OrdersTab() {
       setLoading(false);
     });
   }, [user]);
+
+  function handleOrderCancelled(orderId: string) {
+    setOrders((prev) =>
+      prev.map((o) => o.id === orderId ? { ...o, status: "cancelled" as const } : o),
+    );
+  }
 
   if (loading) {
     return (
@@ -264,7 +534,13 @@ function OrdersTab() {
 
   return (
     <div className="space-y-3">
-      {orders.map((order) => <OrderCard key={order.id} order={order} />)}
+      {orders.map((order) => (
+        <OrderCard
+          key={order.id}
+          order={order}
+          onCancelled={() => handleOrderCancelled(order.id)}
+        />
+      ))}
     </div>
   );
 }
