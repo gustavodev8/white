@@ -74,12 +74,12 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
             {/* Itens */}
             <ul className="flex-1 overflow-y-auto divide-y divide-gray-100 px-4 py-2">
               {items.map((item) => (
-                <li key={item.id} className="flex gap-3 py-4">
+                <li key={item.cartKey} className="flex gap-3 py-4">
                   {/* Imagem */}
                   <img
                     src={item.image}
                     alt={item.name}
-                    className="w-16 h-16 object-contain rounded-lg bg-gray-50 border border-gray-100 flex-shrink-0"
+                    className="w-16 h-16 object-cover rounded-lg bg-gray-50 border border-gray-100 flex-shrink-0"
                     onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
                   />
 
@@ -88,13 +88,20 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                     <p className="text-sm font-medium text-gray-800 line-clamp-2 leading-tight">
                       {item.name}
                     </p>
-                    <p className="text-xs text-gray-400">{item.brand} · {item.quantity}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs text-gray-400">{item.brand}</p>
+                      {item.selectedSize && (
+                        <span className="text-[10px] font-bold bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                          {item.selectedSize}
+                        </span>
+                      )}
+                    </div>
 
                     {/* Controles de quantidade */}
                     <div className="flex items-center justify-between mt-auto">
                       <div className="flex items-center border border-gray-200 rounded-full overflow-hidden">
                         <button
-                          onClick={() => decreaseQty(item.id)}
+                          onClick={() => decreaseQty(item.cartKey)}
                           className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors"
                         >
                           <Minus className="h-3 w-3" />
@@ -103,7 +110,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                           {item.cartQuantity}
                         </span>
                         <button
-                          onClick={() => increaseQty(item.id)}
+                          onClick={() => increaseQty(item.cartKey)}
                           className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors"
                         >
                           <Plus className="h-3 w-3" />
@@ -118,7 +125,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
 
                   {/* Remover */}
                   <button
-                    onClick={() => removeItem(item.id)}
+                    onClick={() => removeItem(item.cartKey)}
                     className="self-start text-gray-300 hover:text-[#e8001c] transition-colors mt-0.5"
                     title="Remover item"
                   >

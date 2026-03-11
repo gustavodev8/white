@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { X, Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, ChevronLeft } from "lucide-react";
+import { STORE_NAME } from "@/config/storeConfig";
 import { useAuth } from "@/hooks/useAuth";
 
 /* ── helpers ──────────────────────────────────────────────────── */
@@ -15,7 +16,7 @@ function maskPhone(v: string) {
     .replace(/(\d{5})(\d)/, "$1-$2");
 }
 
-/* ── Input padrão estilo Drogasil ─────────────────────────────── */
+/* ── Input base ───────────────────────────────────────────────── */
 const inputCls =
   "w-full bg-gray-100 border-0 rounded-2xl px-4 py-3.5 text-sm text-gray-800 " +
   "placeholder-gray-400 focus:outline-none focus:bg-gray-200 transition-colors";
@@ -290,7 +291,7 @@ function RegisterTab({ onSuccess, onLogin }: { onSuccess: () => void; onLogin: (
           <CheckCircle2 className="h-10 w-10 text-green-500" />
         </div>
         <div>
-          <p className="text-lg font-bold text-gray-800">Bem-vindo(a) à RB Farma!</p>
+          <p className="text-lg font-bold text-gray-800">Bem-vindo(a) à {STORE_NAME}!</p>
           <p className="text-sm text-gray-500 mt-1">Sua conta foi criada com sucesso, {name.split(" ")[0]}!</p>
         </div>
       </div>
@@ -341,7 +342,7 @@ function RegisterTab({ onSuccess, onLogin }: { onSuccess: () => void; onLogin: (
         {/* Bloco informativo */}
         <div className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-xs text-gray-500 leading-relaxed">
           Ao se cadastrar você também acessa o{" "}
-          <span className="font-semibold text-[#e8001c]">Programa de Fidelidade RB Farma</span> com
+          <span className="font-semibold text-[#e8001c]">Programa de Fidelidade {STORE_NAME}</span> com
           descontos exclusivos e vantagens especiais!
         </div>
 
@@ -460,16 +461,10 @@ export default function AuthModal() {
 
         {/* Topo: logo + fechar */}
         <div className="sticky top-0 bg-white z-10 px-6 pt-5 pb-4 flex items-center justify-between border-b border-gray-100">
-          {/* Logo RB Farma */}
-          <div className="flex items-center gap-1.5">
-            <svg viewBox="0 0 24 24" className="h-5 w-5 text-[#e8001c]" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h4c2.21 0 4 1.79 4 4s-1.79 4-4 4zm0-6h-1v4h1c1.1 0 2-.9 2-2s-.9-2-2-2z" />
-            </svg>
-            <span className="text-base font-extrabold text-[#e8001c] tracking-tight leading-none">
-              RB{" "}
-              <span className="bg-[#FFD600] text-[#e8001c] px-1 py-0.5 rounded text-sm">FARMA</span>
-            </span>
-          </div>
+          {/* Logo */}
+          <span className="text-base font-extrabold text-gray-900 tracking-tight leading-none">
+            {STORE_NAME}
+          </span>
 
           <button
             onClick={closeAuthModal}

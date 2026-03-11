@@ -1,4 +1,4 @@
-import { Plus, ArrowDown } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/hooks/useCart";
 import type { Product } from "@/types";
@@ -10,30 +10,21 @@ interface ProductCardProps {
 const fmt = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-/** Retorna badge de estoque: null = sem controle, 0 = esgotado, 1-5 = últimas, >5 = ok */
-function StockBadge({ stock }: { stock: number | null }) {
-  if (stock === null) return null; // sem controle → não exibe nada
-  if (stock === 0)
-    return (
-      <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full z-10">
-        Esgotado
-      </span>
-    );
-  if (stock <= 5)
-    return (
-      <span className="absolute top-2 right-2 bg-amber-400 text-white text-[10px] font-bold px-2 py-0.5 rounded-full z-10">
-        Últimas {stock}
-      </span>
-    );
-  return null;
+function installments(price: number): string | null {
+  if (price < 30) return null;
+  const parcelas = price >= 150 ? 6 : 3;
+  const valor = price / parcelas;
+  return `${parcelas}x de ${fmt(valor)} sem juros`;
 }
 
 const ProductCard = ({ product }: ProductCardProps) => {
   const { addItem }  = useCart();
   const navigate     = useNavigate();
-  const { name, quantity, originalPrice, price, discount, image, stock } = product;
+  const { name, originalPrice, price, discount, image, stock } = product;
 
   const outOfStock = stock !== null && stock === 0;
+  const isNew      = discount === 0;
+  const isPromo    = discount > 0;
 
   function handleCardClick() {
     navigate(`/produto/${product.id}`, { state: { product } });
@@ -45,56 +36,73 @@ const ProductCard = ({ product }: ProductCardProps) => {
     addItem(product);
   }
 
+  const parcelamento = installments(price);
+
   return (
     <div
       onClick={handleCardClick}
-      className={`min-w-[180px] max-w-[200px] bg-background border border-border rounded-card p-3 flex flex-col gap-2 hover:shadow-md transition-shadow relative group cursor-pointer ${
+      className={`flex flex-col bg-background rounded-lg overflow-hidden cursor-pointer group ${
         outOfStock ? "opacity-60" : ""
       }`}
     >
-      {/* Badge de desconto */}
-      {discount > 0 && !outOfStock && (
-        <div className="absolute top-2 left-2 flex items-center gap-0.5 bg-discount text-discount-foreground text-xs font-bold px-2 py-0.5 rounded-full z-10">
-          <ArrowDown className="h-3 w-3" />
-          {discount}%
-        </div>
-      )}
+      {/* Área da imagem */}
+      <div className="relative bg-card rounded-lg overflow-hidden" style={{ aspectRatio: "3/4" }}>
+        {/* Badge */}
+        {outOfStock ? (
+          <span className="absolute top-2 left-2 bg-gray-500 text-white text-[10px] font-bold px-2 py-0.5 z-10 tracking-wider uppercase">
+            Esgotado
+          </span>
+        ) : stock !== null && stock <= 5 ? (
+          <span className="absolute top-2 left-2 bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 z-10 tracking-wider uppercase">
+            Últimas {stock}
+          </span>
+        ) : isPromo ? (
+          <span className="absolute top-2 left-2 bg-gray-900 text-white text-[10px] font-bold px-2 py-0.5 z-10 tracking-wider">
+            -{discount}%
+          </span>
+        ) : (
+          <span className="absolute top-2 left-2 bg-gray-900 text-white text-[10px] font-bold px-2 py-0.5 z-10 tracking-wider uppercase">
+            Novo
+          </span>
+        )}
 
-      {/* Badge de estoque */}
-      <StockBadge stock={stock ?? null} />
+        {/* Imagem */}
+        <img
+          src={image}
+          alt={name}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = "/placeholder.svg";
+          }}
+        />
 
-      {/* Imagem do produto */}
-      <img
-        src={image}
-        alt={name}
-        className="w-full h-32 object-contain mx-auto rounded-lg"
-        onError={(e) => {
-          (e.target as HTMLImageElement).src = "/placeholder.svg";
-        }}
-      />
+        {/* Botão add ao carrinho */}
+        {!outOfStock && (
+          <button
+            onClick={handleAddToCart}
+            title="Adicionar ao carrinho"
+            className="absolute bottom-3 right-3 w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-900 hover:text-white text-gray-900"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        )}
+      </div>
 
-      {/* Nome e quantidade */}
-      <p className="text-xs text-foreground font-medium leading-tight line-clamp-2">{name}</p>
-      <p className="text-xs text-muted-foreground">{quantity}</p>
+      {/* Info do produto */}
+      <div className="pt-2 pb-1 px-0.5">
+        <p className="text-xs text-foreground font-medium leading-snug line-clamp-2 mb-1.5">{name}</p>
 
-      {/* Preço e botão adicionar */}
-      <div className="flex items-end justify-between mt-auto">
         <div>
-          <p className="text-xs text-muted-foreground line-through">{fmt(originalPrice)}</p>
-          <p className="text-sm font-bold text-foreground">{fmt(price)}</p>
+          {isPromo && originalPrice > price && (
+            <p className="text-[10px] text-muted-foreground line-through leading-none mb-0.5">
+              {fmt(originalPrice)}
+            </p>
+          )}
+          <p className="text-sm font-bold text-foreground leading-none">{fmt(price)}</p>
+          {parcelamento && (
+            <p className="text-[10px] text-muted-foreground mt-1">{parcelamento}</p>
+          )}
         </div>
-        <button
-          onClick={handleAddToCart}
-          title={outOfStock ? "Produto esgotado" : "Adicionar ao carrinho"}
-          disabled={outOfStock}
-          className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-            outOfStock
-              ? "bg-muted text-muted-foreground cursor-not-allowed"
-              : "bg-primary text-primary-foreground hover:bg-primary-hover"
-          }`}
-        >
-          <Plus className="h-4 w-4" />
-        </button>
       </div>
     </div>
   );

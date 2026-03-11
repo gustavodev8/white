@@ -1,34 +1,36 @@
-export type ProductCategory =
-  | "medicamentos"
-  | "vitaminas"
-  | "skincare"
-  | "higiene"
-  | "beleza"
-  | "suplementos"
-  | "perfumes"
-  | "manipulados"
-  | "dermocosmeticos";
+// ProductCategory is a plain string — supports both fashion and legacy pharmacy
+export type ProductCategory = string;
 
 export interface Product {
   id: string;
   gtin?: string;
   name: string;
   brand: string;
+  /** Sizes string: "P / M / G / GG" or "36 / 37 / 38" — or plain info like "100ml" */
   quantity: string;
   price: number;
   originalPrice: number;
   discount: number;
   image: string;
   category: ProductCategory;
-  /** Quantidade em estoque. null = sem controle de estoque (sempre disponível) */
+  /** Total stock. null = no stock control (always available) */
   stock: number | null;
+  /** Per-size stock: { "P": 5, "M": 10, "G": 3, "GG": 0 } */
+  sizeStock?: Record<string, number> | null;
 }
 
 export interface CartItem extends Product {
   cartQuantity: number;
+  /** The size chosen when adding this item, e.g. "M" */
+  selectedSize?: string | null;
+  /**
+   * Unique cart key = "${id}_${selectedSize ?? ''}".
+   * Same product in different sizes becomes two separate cart entries.
+   */
+  cartKey: string;
 }
 
-// Cosmos Bluesoft API types
+// ─── Cosmos Bluesoft API (legacy pharmacy — kept for compatibility) ────────────
 export interface CosmosProduct {
   id: number;
   gtin: string;

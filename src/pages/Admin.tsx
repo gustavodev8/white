@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { STORE_NAME } from "@/config/storeConfig";
 import { supabase } from "@/services/supabaseClient";
-import { fetchAllProducts, toggleProductActive, deleteProduct } from "@/services/productsService";
+import { fetchAllProducts, toggleProductActive, deleteProduct, updateProduct } from "@/services/productsService";
 import {
   fetchAllSections, createSection, updateSection,
   toggleSectionActive, deleteSection, reorderSections,
@@ -128,6 +128,7 @@ interface AdminProduct {
   price: number; originalPrice: number; discount: number;
   image: string; category: string; sections: string[]; isActive: boolean;
   stock: number | null;
+  sizeStock?: Record<string, number> | null;
 }
 
 // ─── Tipo perfil de cliente ───────────────────────────────────────────────────
@@ -143,6 +144,25 @@ interface Profile {
 interface CartItem {
   product: AdminProduct;
   qty: number;
+  selectedSize?: string | null;
+  cartKey: string; // `${product.id}_${selectedSize ?? ""}`
+}
+
+function pdvCartKey(productId: string, selectedSize?: string | null): string {
+  return `${productId}_${selectedSize ?? ""}`;
+}
+
+function pdvParseSizes(quantity: string): string[] {
+  if (!quantity.includes("/")) return [];
+  return quantity.split("/").map((s) => s.trim()).filter(Boolean);
+}
+
+function pdvSizeStock(product: AdminProduct, size: string | null | undefined): number {
+  if (size && product.sizeStock) {
+    const s = product.sizeStock[size];
+    if (s !== undefined) return s;
+  }
+  return product.stock ?? 0;
 }
 
 // ─── Login ────────────────────────────────────────────────────────────────────
@@ -162,14 +182,13 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-secondary">
-      <div className="bg-background rounded-2xl shadow-lg p-8 w-full max-w-sm space-y-6">
+    <div className="min-h-screen flex items-center justify-center bg-gray-950">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center gap-2">
           <div className="flex items-center gap-2">
-            <Heart className="h-8 w-8 text-primary" fill="currentColor" />
-            <span className="text-2xl font-extrabold text-primary tracking-tight">{STORE_NAME}</span>
+            <span className="text-2xl font-black text-gray-900 tracking-tight">{STORE_NAME}</span>
           </div>
-          <p className="text-sm text-muted-foreground">Painel Administrativo</p>
+          <p className="text-sm text-gray-400 uppercase tracking-widest text-xs font-semibold">Painel Administrativo</p>
         </div>
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-1">
@@ -1140,6 +1159,8 @@ function ProductsTab({ isActive }: { isActive: boolean }) {
 }
 
 // ─── Aba de Seções ────────────────────────────────────────────────────────────
+type SectionProduct = { id: string; name: string; brand: string; image: string; isActive: boolean; sections: string[] };
+
 function SectionsTab({ isActive }: { isActive: boolean }) {
   const [sections, setSections]         = useState<Section[]>([]);
   const [loading, setLoading]           = useState(false);
@@ -1149,6 +1170,61 @@ function SectionsTab({ isActive }: { isActive: boolean }) {
   const [editingId, setEditingId]       = useState<string | null>(null);
   const [editingName, setEditingName]   = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Section | undefined>();
+
+  // ── Product picker ─────────────────────────────────────────────────────────
+  const [pickerSection,  setPickerSection]  = useState<Section | null>(null);
+  const [allProducts,    setAllProducts]    = useState<SectionProduct[]>([]);
+  const [pickedIds,      setPickedIds]      = useState<Set<string>>(new Set());
+  const [originalIds,    setOriginalIds]    = useState<Set<string>>(new Set());
+  const [loadingProds,   setLoadingProds]   = useState(false);
+  const [savingProds,    setSavingProds]    = useState(false);
+  const [prodSearch,     setProdSearch]     = useState("");
+
+  const filteredProds = useMemo(() => {
+    const q = prodSearch.toLowerCase();
+    const inSection  = allProducts.filter(p => pickedIds.has(p.id) && (!q || p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q)));
+    const outSection = allProducts.filter(p => !pickedIds.has(p.id) && (!q || p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q)));
+    return [...inSection, ...outSection];
+  }, [allProducts, pickedIds, prodSearch]);
+
+  async function openPicker(section: Section) {
+    setPickerSection(section);
+    setProdSearch("");
+    setLoadingProds(true);
+    try {
+      const prods = await fetchAllProducts() as SectionProduct[];
+      setAllProducts(prods);
+      const ids = new Set(prods.filter(p => p.sections.includes(section.name)).map(p => p.id));
+      setPickedIds(ids);
+      setOriginalIds(new Set(ids));
+    } catch { toast.error("Erro ao carregar produtos"); }
+    finally { setLoadingProds(false); }
+  }
+
+  function togglePicked(id: string) {
+    setPickedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function savePicker() {
+    if (!pickerSection) return;
+    setSavingProds(true);
+    try {
+      const changed = allProducts.filter(p => originalIds.has(p.id) !== pickedIds.has(p.id));
+      await Promise.all(changed.map(p => {
+        const newSections = pickedIds.has(p.id)
+          ? [...p.sections, pickerSection.name]
+          : p.sections.filter(s => s !== pickerSection.name);
+        return updateProduct(p.id, { sections: newSections });
+      }));
+      toast.success(`${changed.length} produto(s) atualizado(s)!`);
+      setPickerSection(null);
+    } catch { toast.error("Erro ao salvar produtos"); }
+    finally { setSavingProds(false); }
+  }
 
   const loadSections = useCallback(async () => {
     setLoading(true);
@@ -1288,6 +1364,10 @@ function SectionsTab({ isActive }: { isActive: boolean }) {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => openPicker(section)}
+                        title="Gerenciar produtos da seção">
+                        <LayoutList className="h-4 w-4" />
+                      </Button>
                       <Button variant="ghost" size="icon"
                         onClick={() => { setEditingId(section.id); setEditingName(section.name); }}>
                         <Pencil className="h-4 w-4" />
@@ -1319,6 +1399,125 @@ function SectionsTab({ isActive }: { isActive: boolean }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Product picker dialog ─────────────────────────────────────────── */}
+      <Dialog open={Boolean(pickerSection)} onOpenChange={o => !o && setPickerSection(null)}>
+        <DialogContent className="max-w-4xl w-full flex flex-col gap-0 p-0 max-h-[92vh]">
+
+          {/* Header */}
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0">
+            <DialogTitle className="text-xl font-semibold tracking-tight">
+              {pickerSection?.name}
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Selecione os produtos que aparecerão nesta seção do carrossel
+            </p>
+          </DialogHeader>
+
+          {/* Search */}
+          <div className="px-6 py-4 border-b border-border shrink-0">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                value={prodSearch}
+                onChange={e => setProdSearch(e.target.value)}
+                placeholder="Buscar por nome ou marca..."
+                className="pl-10 h-10 text-sm"
+              />
+              {prodSearch && (
+                <button
+                  onClick={() => setProdSearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Product grid */}
+          <div className="flex-1 overflow-y-auto px-6 py-5 min-h-0">
+            {loadingProds ? (
+              <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+                <div className="h-7 w-7 border-[3px] border-current border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm">Carregando produtos...</span>
+              </div>
+            ) : filteredProds.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 gap-2 text-muted-foreground">
+                <Package className="h-10 w-10 opacity-20" />
+                <p className="text-sm">Nenhum produto encontrado.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {filteredProds.map(p => {
+                  const checked = pickedIds.has(p.id);
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => togglePicked(p.id)}
+                      className={`
+                        relative rounded-xl overflow-hidden border-2 cursor-pointer
+                        transition-all duration-150 select-none
+                        ${checked
+                          ? "border-primary shadow-md shadow-primary/10"
+                          : "border-border hover:border-muted-foreground/50 hover:shadow-sm"}
+                      `}
+                    >
+                      {/* Checkmark badge */}
+                      <div className={`
+                        absolute top-2 right-2 z-10 h-6 w-6 rounded-full flex items-center justify-center
+                        transition-all duration-150 border-2
+                        ${checked
+                          ? "bg-primary border-primary text-primary-foreground scale-100"
+                          : "bg-background/80 border-border text-transparent scale-90"}
+                      `}>
+                        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                      </div>
+
+                      {/* Product image */}
+                      <div className="aspect-[3/4] bg-muted overflow-hidden">
+                        <img
+                          src={p.image}
+                          alt={p.name}
+                          className={`w-full h-full object-cover transition-transform duration-200 ${checked ? "scale-105" : "hover:scale-103"}`}
+                          onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
+                        />
+                      </div>
+
+                      {/* Product info */}
+                      <div className={`px-2.5 py-2.5 transition-colors ${checked ? "bg-primary/5" : "bg-background"}`}>
+                        <p className="text-xs font-semibold leading-snug line-clamp-2 mb-0.5">{p.name}</p>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide truncate">{p.brand}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-6 py-4 border-t border-border flex items-center justify-between shrink-0">
+            <p className="text-sm text-muted-foreground">
+              <span className="text-foreground font-semibold">{pickedIds.size}</span>
+              {" "}de{" "}
+              <span className="text-foreground font-semibold">{allProducts.length}</span>
+              {" "}produto{allProducts.length !== 1 ? "s" : ""} selecionado{pickedIds.size !== 1 ? "s" : ""}
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setPickerSection(null)} disabled={savingProds}>
+                Cancelar
+              </Button>
+              <Button onClick={savePicker} disabled={savingProds || loadingProds}>
+                {savingProds ? "Salvando..." : "Salvar alterações"}
+              </Button>
+            </div>
+          </div>
+
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -1534,6 +1733,8 @@ function PDVTab({ isActive }: { isActive: boolean }) {
   const [parcelas,        setParcelas]        = useState(1);
   const [observacoes,     setObservacoes]     = useState("");
   const [cfgCartao,       setCfgCartao]       = useState<ConfigCartao>({ taxa_pct: 2.5, parcelas_max: 6, juros_a_partir_de: 2 });
+  const [sizePickerProduct, setSizePickerProduct] = useState<AdminProduct | null>(null);
+  const [pickedSize,      setPickedSize]      = useState<string | null>(null);
   const loaded = useRef(false);
 
   const loadProducts = useCallback(async () => {
@@ -1562,32 +1763,67 @@ function PDVTab({ isActive }: { isActive: boolean }) {
   );
 
   function addToCart(product: AdminProduct) {
+    const sizes = pdvParseSizes(product.quantity);
+    if (sizes.length > 0) {
+      // Has sizes — open the size picker dialog
+      setPickedSize(null);
+      setSizePickerProduct(product);
+      return;
+    }
     const stockDisp = product.stock ?? 0;
-    if (stockDisp === 0) { toast.warning("Produto sem estoque."); return; }
+    if (product.stock !== null && stockDisp === 0) {
+      toast.warning("Produto sem estoque.");
+      return;
+    }
+    const key = pdvCartKey(product.id, null);
     setCart(prev => {
-      const found = prev.find(i => i.product.id === product.id);
+      const found = prev.find(i => i.cartKey === key);
       if (found) {
-        if (found.qty >= stockDisp) {
-          toast.warning(`Estoque maximo atingido (${stockDisp} un.)`);
+        if (product.stock !== null && found.qty >= stockDisp) {
+          toast.warning(`Estoque máximo atingido (${stockDisp} un.)`);
           return prev;
         }
-        return prev.map(i => i.product.id === product.id ? { ...i, qty: i.qty + 1 } : i);
+        return prev.map(i => i.cartKey === key ? { ...i, qty: i.qty + 1 } : i);
       }
-      return [...prev, { product, qty: 1 }];
+      return [...prev, { product, qty: 1, selectedSize: null, cartKey: key }];
     });
   }
 
-  function updateQty(productId: string, delta: number) {
+  function addToCartWithSize(product: AdminProduct, size: string) {
+    const stockDisp = pdvSizeStock(product, size);
+    if (stockDisp === 0) {
+      toast.warning(`Tamanho ${size} sem estoque.`);
+      return;
+    }
+    const key = pdvCartKey(product.id, size);
+    setCart(prev => {
+      const found = prev.find(i => i.cartKey === key);
+      if (found) {
+        if (found.qty >= stockDisp) {
+          toast.warning(`Estoque máximo atingido (${stockDisp} un.)`);
+          return prev;
+        }
+        return prev.map(i => i.cartKey === key ? { ...i, qty: i.qty + 1 } : i);
+      }
+      return [...prev, { product, qty: 1, selectedSize: size, cartKey: key }];
+    });
+    setSizePickerProduct(null);
+  }
+
+  function updateQty(cartKey: string, delta: number) {
     setCart(prev => {
       if (delta > 0) {
-        const item = prev.find(i => i.product.id === productId);
-        if (item && item.qty >= (item.product.stock ?? 0)) {
-          toast.warning(`Estoque maximo atingido (${item.product.stock ?? 0} un.)`);
-          return prev;
+        const item = prev.find(i => i.cartKey === cartKey);
+        if (item) {
+          const lim = pdvSizeStock(item.product, item.selectedSize);
+          if (item.product.stock !== null && item.qty >= lim) {
+            toast.warning(`Estoque máximo atingido (${lim} un.)`);
+            return prev;
+          }
         }
       }
       return prev
-        .map(i => i.product.id === productId ? { ...i, qty: Math.max(0, i.qty + delta) } : i)
+        .map(i => i.cartKey === cartKey ? { ...i, qty: Math.max(0, i.qty + delta) } : i)
         .filter(i => i.qty > 0);
     });
   }
@@ -1613,10 +1849,12 @@ function PDVTab({ isActive }: { isActive: boolean }) {
     setLastReceipt(null);
     const saleItems = cart.map(i => ({
       product_id:       i.product.id,
-      product_name:     i.product.name,
+      product_name:     i.selectedSize
+        ? `${i.product.name} — Tam. ${i.selectedSize}`
+        : i.product.name,
       product_image:    i.product.image,
       product_brand:    i.product.brand,
-      product_quantity: i.product.quantity,
+      product_quantity: i.selectedSize ?? i.product.quantity,
       unit_price:       i.product.price,
       quantity:         i.qty,
       total:            i.product.price * i.qty,
@@ -1653,7 +1891,7 @@ function PDVTab({ isActive }: { isActive: boolean }) {
           paymentMethod:  payMethod,
           parcelas:       payMethod === "cartao" ? parcelas : undefined,
           items: cart.map(i => ({
-            name:      i.product.name,
+            name:      i.selectedSize ? `${i.product.name} — ${i.selectedSize}` : i.product.name,
             qty:       i.qty,
             unitPrice: i.product.price,
             total:     i.product.price * i.qty,
@@ -1697,23 +1935,30 @@ function PDVTab({ isActive }: { isActive: boolean }) {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {filtered.map(p => {
-              const sem = (p.stock ?? 0) === 0;
-              const baixo = !sem && (p.stock ?? 0) <= 5;
+              const hasSizes = pdvParseSizes(p.quantity).length > 0;
+              const allSizesOos = hasSizes && p.sizeStock != null &&
+                pdvParseSizes(p.quantity).every(s => (p.sizeStock![s] ?? 1) === 0);
+              const sem = !hasSizes && p.stock !== null && (p.stock ?? 0) === 0;
+              const esgotado = sem || allSizesOos;
+              const baixo = !esgotado && !hasSizes && p.stock !== null && (p.stock ?? 0) <= 5;
               return (
-                <button key={p.id} onClick={() => addToCart(p)} disabled={sem}
+                <button key={p.id} onClick={() => addToCart(p)} disabled={esgotado}
                   className={`relative bg-background border rounded-xl p-3 text-left transition-colors group ${
-                    sem
+                    esgotado
                       ? "border-border opacity-50 cursor-not-allowed"
                       : "border-border hover:border-primary"
                   }`}>
-                  {sem && (
+                  {esgotado && (
                     <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Esgotado</span>
                   )}
                   {baixo && (
                     <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Ult. {p.stock}</span>
                   )}
+                  {hasSizes && !esgotado && (
+                    <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">Tamanhos</span>
+                  )}
                   <img src={p.image || "/placeholder.svg"} alt={p.name}
-                    className="w-full h-16 object-contain mb-2 rounded-lg bg-secondary"
+                    className="w-full h-16 object-cover mb-2 rounded-lg bg-secondary"
                     onError={e => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }} />
                   <p className="text-xs font-semibold line-clamp-2 group-hover:text-primary leading-snug">{p.name}</p>
                   <p className="text-xs text-primary font-bold mt-1">{fmt(p.price)}</p>
@@ -1752,37 +1997,45 @@ function PDVTab({ isActive }: { isActive: boolean }) {
             </div>
           ) : (
             <div className="divide-y divide-border max-h-52 overflow-y-auto">
-              {cart.map(item => (
-                <div key={item.product.id} className="flex items-center gap-2 px-4 py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium line-clamp-1">{item.product.name}</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {fmt(item.product.price)} × {item.qty}
-                      {item.product.stock !== null && (
-                        <span className={`ml-1.5 ${item.qty >= (item.product.stock ?? 0) ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
-                          (est. {item.product.stock})
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => updateQty(item.product.id, -1)}
-                      className="w-5 h-5 rounded-full border border-border flex items-center justify-center hover:bg-secondary">
-                      <Minus className="h-2.5 w-2.5" />
+              {cart.map(item => {
+                const lim = pdvSizeStock(item.product, item.selectedSize);
+                return (
+                  <div key={item.cartKey} className="flex items-center gap-2 px-4 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium line-clamp-1">{item.product.name}</p>
+                      <p className="text-[11px] text-muted-foreground flex items-center gap-1 flex-wrap">
+                        {fmt(item.product.price)} × {item.qty}
+                        {item.selectedSize && (
+                          <span className="font-bold bg-gray-100 text-gray-600 px-1 rounded uppercase text-[9px]">
+                            {item.selectedSize}
+                          </span>
+                        )}
+                        {item.product.stock !== null && !item.selectedSize && (
+                          <span className={`${item.qty >= lim ? "text-amber-600 font-medium" : ""}`}>
+                            (est. {lim})
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => updateQty(item.cartKey, -1)}
+                        className="w-5 h-5 rounded-full border border-border flex items-center justify-center hover:bg-secondary">
+                        <Minus className="h-2.5 w-2.5" />
+                      </button>
+                      <span className="text-xs font-bold w-5 text-center">{item.qty}</span>
+                      <button onClick={() => updateQty(item.cartKey, 1)}
+                        className="w-5 h-5 rounded-full border border-border flex items-center justify-center hover:bg-secondary">
+                        <Plus className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                    <p className="text-xs font-bold shrink-0 w-14 text-right">{fmt(item.product.price * item.qty)}</p>
+                    <button onClick={() => setCart(prev => prev.filter(i => i.cartKey !== item.cartKey))}
+                      className="text-muted-foreground hover:text-destructive transition-colors">
+                      <X className="h-3.5 w-3.5" />
                     </button>
-                    <span className="text-xs font-bold w-5 text-center">{item.qty}</span>
-                    <button onClick={() => updateQty(item.product.id, 1)}
-                      className="w-5 h-5 rounded-full border border-border flex items-center justify-center hover:bg-secondary">
-                      <Plus className="h-2.5 w-2.5" />
-                    </button>
                   </div>
-                  <p className="text-xs font-bold shrink-0 w-14 text-right">{fmt(item.product.price * item.qty)}</p>
-                  <button onClick={() => setCart(prev => prev.filter(i => i.product.id !== item.product.id))}
-                    className="text-muted-foreground hover:text-destructive transition-colors">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1967,6 +2220,46 @@ function PDVTab({ isActive }: { isActive: boolean }) {
           </Button>
         </div>
       </div>
+
+      {/* ── Seletor de Tamanho (PDV) ── */}
+      <Dialog open={!!sizePickerProduct} onOpenChange={(open) => { if (!open) setSizePickerProduct(null); }}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Selecionar tamanho</DialogTitle>
+          </DialogHeader>
+          {sizePickerProduct && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground line-clamp-2">{sizePickerProduct.name}</p>
+              <div className="flex flex-wrap gap-2">
+                {pdvParseSizes(sizePickerProduct.quantity).map(s => {
+                  const stock = pdvSizeStock(sizePickerProduct, s);
+                  const oos   = sizePickerProduct.sizeStock != null && stock === 0;
+                  return (
+                    <button
+                      key={s}
+                      disabled={oos}
+                      onClick={() => { setPickedSize(s); addToCartWithSize(sizePickerProduct, s); }}
+                      className={`min-w-[48px] h-10 px-3 border text-sm font-bold rounded transition-colors ${
+                        oos
+                          ? "border-gray-200 text-gray-300 cursor-not-allowed line-through"
+                          : pickedSize === s
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border hover:border-primary"
+                      }`}
+                    >
+                      {s}
+                      {oos && <span className="block text-[9px] font-normal">esgotado</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <Button variant="outline" className="w-full" onClick={() => setSizePickerProduct(null)}>
+                Cancelar
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -5593,7 +5886,7 @@ const PAGE_TITLES: Record<string, { title: string; sub: string }> = {
   pdv:       { title: "Nova Venda — PDV",       sub: "Registre vendas presenciais rapidamente." },
   clientes:       { title: "Clientes",               sub: "Clientes cadastrados na plataforma." },
   "fluxo-caixa":   { title: "Fluxo de Caixa",   sub: "Registre entradas e saidas e acompanhe o saldo." },
-  colaboradores:   { title: "Colaboradores",    sub: "Gerencie a equipe da farmacia." },
+  colaboradores:   { title: "Colaboradores",    sub: "Gerencie a equipe da loja." },
   estoque:         { title: "Estoque",          sub: "Controle as quantidades de produtos e receba alertas de reposicao." },
   metas:           { title: "Metas do mes",     sub: "Defina metas de faturamento e pedidos e acompanhe o progresso." },
   relatorios:      { title: "Relatorios",       sub: "Analise vendas, produtos e colaboradores por periodo." },
@@ -5603,9 +5896,9 @@ const PAGE_TITLES: Record<string, { title: string; sub: string }> = {
   configuracoes:   { title: "Configurações",     sub: "Taxa de cartão, parcelas e outras preferências do sistema." },
   caixa:           { title: "Fechamento de Caixa", sub: "Registre o saldo do dia, sincronize totais e feche o caixa." },
   fornecedores:    { title: "Fornecedores",       sub: "Cadastre e gerencie seus fornecedores de produtos." },
-  produtos:  { title: "Produtos",               sub: "Gerencie o catalogo de produtos." },
-  secoes:    { title: "Secoes do carrossel",    sub: "Crie, renomeie e reordene secoes da pagina inicial." },
-  banners:   { title: "Banners",                sub: "Imagens do carrossel principal (1200 x 400 px)." },
+  produtos:  { title: "Produtos",               sub: "Gerencie o catálogo de produtos da loja." },
+  secoes:    { title: "Seções do carrossel",    sub: "Crie, renomeie e reordene seções da página inicial." },
+  banners:   { title: "Banners",                sub: "Imagens do carrossel principal — recomendado 1200 × 400 px." },
 };
 
 // ─── Dashboard do Colaborador ─────────────────────────────────────────────────
@@ -5814,9 +6107,9 @@ function ColaboradorDashboard({ userRole, email }: { userRole: UserRole; email: 
     return (
       <nav className="p-3 space-y-1">
         <div className="px-3 pb-2">
-          <div className="flex items-center gap-2 py-2 px-1 bg-primary/10 rounded-lg px-3">
-            <ShieldAlert className="h-3.5 w-3.5 text-primary shrink-0" />
-            <span className="text-xs font-medium text-primary">Acesso colaborador</span>
+          <div className="flex items-center gap-2 py-2 px-3 bg-gray-800 rounded-lg">
+            <ShieldAlert className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            <span className="text-xs font-medium text-gray-300">Acesso colaborador</span>
           </div>
         </div>
         {navItems.map(item => {
@@ -5828,8 +6121,8 @@ function ColaboradorDashboard({ userRole, email }: { userRole: UserRole; email: 
               onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left ${
                 isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  ? "bg-white text-gray-900"
+                  : "text-gray-400 hover:bg-gray-800 hover:text-white"
               }`}
             >
               <Icon className="h-4 w-4 shrink-0" />
@@ -5842,28 +6135,27 @@ function ColaboradorDashboard({ userRole, email }: { userRole: UserRole; email: 
   }
 
   return (
-    <div className="min-h-screen bg-secondary flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
 
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <header className="bg-background border-b border-border sticky top-0 z-20">
+      <header className="bg-gray-950 border-b border-gray-800 sticky top-0 z-20">
         <div className="flex items-center justify-between px-4 py-3 gap-3">
           <div className="flex items-center gap-3">
             <button
-              className="lg:hidden p-1.5 rounded-lg hover:bg-secondary transition-colors"
+              className="lg:hidden p-1.5 rounded-lg hover:bg-gray-800 transition-colors text-gray-300"
               onClick={() => setSidebarOpen(o => !o)}
               aria-label="Menu"
             >
               <Menu className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-2 shrink-0">
-              <Heart className="h-6 w-6 text-primary" fill="currentColor" />
-              <span className="text-lg font-extrabold text-primary tracking-tight">{STORE_NAME}</span>
-              <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">Colaborador</Badge>
+              <span className="text-lg font-black text-white tracking-tight">{STORE_NAME}</span>
+              <span className="ml-1 hidden sm:inline-flex text-[10px] font-bold bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full uppercase tracking-widest">Colaborador</span>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground hidden sm:inline truncate max-w-[180px]">{email}</span>
-            <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} className="gap-1.5">
+            <span className="text-xs text-gray-400 hidden sm:inline truncate max-w-[180px]">{email}</span>
+            <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} className="gap-1.5 text-gray-300 hover:text-white hover:bg-gray-800">
               <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline">Sair</span>
             </Button>
@@ -5874,7 +6166,7 @@ function ColaboradorDashboard({ userRole, email }: { userRole: UserRole; email: 
       <div className="flex flex-1 min-h-0">
 
         {/* ── Sidebar desktop ─────────────────────────────────────────── */}
-        <aside className="hidden lg:block w-52 shrink-0 bg-background border-r border-border sticky top-[57px] self-start h-[calc(100vh-57px)] overflow-y-auto">
+        <aside className="hidden lg:block w-52 shrink-0 bg-gray-950 border-r border-gray-800 sticky top-[57px] self-start h-[calc(100vh-57px)] overflow-y-auto">
           <SidebarNav />
         </aside>
 
@@ -5882,10 +6174,10 @@ function ColaboradorDashboard({ userRole, email }: { userRole: UserRole; email: 
         {sidebarOpen && (
           <>
             <div
-              className="fixed inset-0 bg-black/40 z-30 lg:hidden"
+              className="fixed inset-0 bg-black/60 z-30 lg:hidden"
               onClick={() => setSidebarOpen(false)}
             />
-            <aside className="fixed left-0 top-[57px] bottom-0 w-52 bg-background border-r border-border z-40 overflow-y-auto lg:hidden">
+            <aside className="fixed left-0 top-[57px] bottom-0 w-52 bg-gray-950 border-r border-gray-800 z-40 overflow-y-auto lg:hidden">
               <SidebarNav />
             </aside>
           </>
@@ -5950,14 +6242,14 @@ function AdminDashboard({ userRole }: { userRole: UserRole | null }) {
       <nav className="p-3 space-y-5">
         {/* Badge de papel na sidebar */}
         {!isAdmin && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 rounded-lg">
-            <ShieldAlert className="h-3.5 w-3.5 text-primary shrink-0" />
-            <span className="text-xs font-medium text-primary">Acesso colaborador</span>
+          <div className="flex items-center gap-2 px-3 py-2 bg-gray-800 rounded-lg">
+            <ShieldAlert className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            <span className="text-xs font-medium text-gray-300">Acesso colaborador</span>
           </div>
         )}
         {navGroupsFiltrados.map(group => (
           <div key={group.label}>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-3 mb-1.5">
+            <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest px-3 mb-1.5">
               {group.label}
             </p>
             <div className="space-y-0.5">
@@ -5970,8 +6262,8 @@ function AdminDashboard({ userRole }: { userRole: UserRole | null }) {
                     onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left ${
                       isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        ? "bg-white text-gray-900"
+                        : "text-gray-400 hover:bg-gray-800 hover:text-white"
                     }`}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
@@ -5987,32 +6279,31 @@ function AdminDashboard({ userRole }: { userRole: UserRole | null }) {
   }
 
   return (
-    <div className="min-h-screen bg-secondary flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
 
       {/* ── Header ─────────────────────────────────────────────────── */}
-      <header className="bg-background border-b border-border sticky top-0 z-20">
+      <header className="bg-gray-950 border-b border-gray-800 sticky top-0 z-20">
         <div className="flex items-center justify-between px-4 py-3 gap-3">
           <div className="flex items-center gap-3">
             {/* Hamburger — apenas mobile */}
             <button
-              className="lg:hidden p-1.5 rounded-lg hover:bg-secondary transition-colors"
+              className="lg:hidden p-1.5 rounded-lg hover:bg-gray-800 transition-colors text-gray-300"
               onClick={() => setSidebarOpen(o => !o)}
               aria-label="Menu"
             >
               <Menu className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-2 shrink-0">
-              <Heart className="h-6 w-6 text-primary" fill="currentColor" />
-              <span className="text-lg font-extrabold text-primary tracking-tight">{STORE_NAME}</span>
-              <Badge variant="secondary" className="ml-1 hidden sm:inline-flex">Admin</Badge>
+              <span className="text-lg font-black text-white tracking-tight">{STORE_NAME}</span>
+              <span className="ml-1 hidden sm:inline-flex text-[10px] font-bold bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full uppercase tracking-widest">Admin</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => window.open("/", "_blank")}>
+            <Button variant="outline" size="sm" className="gap-1.5 border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white bg-transparent" onClick={() => window.open("/", "_blank")}>
               <ExternalLink className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Ver loja</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} className="gap-1.5">
+            <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} className="gap-1.5 text-gray-300 hover:text-white hover:bg-gray-800">
               <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline">Sair</span>
             </Button>
@@ -6023,7 +6314,7 @@ function AdminDashboard({ userRole }: { userRole: UserRole | null }) {
       <div className="flex flex-1 min-h-0">
 
         {/* ── Sidebar desktop ─────────────────────────────────────────── */}
-        <aside className="hidden lg:block w-52 shrink-0 bg-background border-r border-border sticky top-[57px] self-start h-[calc(100vh-57px)] overflow-y-auto">
+        <aside className="hidden lg:block w-52 shrink-0 bg-gray-950 border-r border-gray-800 sticky top-[57px] self-start h-[calc(100vh-57px)] overflow-y-auto">
           <SidebarNav />
         </aside>
 
@@ -6031,10 +6322,10 @@ function AdminDashboard({ userRole }: { userRole: UserRole | null }) {
         {sidebarOpen && (
           <>
             <div
-              className="fixed inset-0 bg-black/40 z-30 lg:hidden"
+              className="fixed inset-0 bg-black/60 z-30 lg:hidden"
               onClick={() => setSidebarOpen(false)}
             />
-            <aside className="fixed left-0 top-[57px] bottom-0 w-52 bg-background border-r border-border z-40 overflow-y-auto lg:hidden">
+            <aside className="fixed left-0 top-[57px] bottom-0 w-52 bg-gray-950 border-r border-gray-800 z-40 overflow-y-auto lg:hidden">
               <SidebarNav />
             </aside>
           </>

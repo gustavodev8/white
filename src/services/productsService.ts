@@ -15,6 +15,8 @@ export interface ProductInput {
   sections:      string[];
   isActive:      boolean;
   stock:         number | null;
+  /** Per-size stock. null = use single stock field. */
+  sizeStock?:    Record<string, number> | null;
 }
 
 // ─── Formato da linha no banco (snake_case) ───────────────────────────────────
@@ -31,6 +33,7 @@ interface DbProduct {
   sections:       string[];
   is_active:      boolean;
   stock:          number | null;
+  size_stock:     Record<string, number> | null;
   created_at:     string;
   updated_at:     string;
 }
@@ -48,6 +51,7 @@ function dbRowToProduct(row: DbProduct): Product {
     image:         row.image_url,
     category:      row.category as ProductCategory,
     stock:         row.stock ?? null,
+    sizeStock:     row.size_stock ?? null,
   };
 }
 
@@ -185,6 +189,7 @@ export async function createProduct(
     sections:       input.sections,
     is_active:      input.isActive,
     stock:          input.stock,
+    size_stock:     input.sizeStock ?? null,
   });
 
   return dbRowToProduct(row);
@@ -217,6 +222,7 @@ export async function updateProduct(
   if (input.sections      !== undefined) patch.sections       = input.sections;
   if (input.isActive      !== undefined) patch.is_active      = input.isActive;
   if ("stock" in input)                  patch.stock          = input.stock;
+  if ("sizeStock" in input)              patch.size_stock     = input.sizeStock;
   patch.updated_at = new Date().toISOString();
 
   const row = await restPatch<DbProduct>(

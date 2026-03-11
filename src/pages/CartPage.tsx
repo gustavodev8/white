@@ -56,32 +56,43 @@ export default function CartPage() {
                   <p className="text-sm font-bold text-gray-700">Entrega 1</p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     Vendido e entregue por{" "}
-                    <span className="font-semibold text-[#e8001c]">RB Farma</span>
+                    <span className="font-semibold text-[#e8001c]">white.com</span>
                   </p>
                 </div>
 
                 {/* Lista de produtos */}
                 <ul className="divide-y divide-gray-100">
                   {items.map((item) => {
-                    const maxQty = item.stock !== null ? Math.min(item.stock, 20) : 20;
+                    const sizeMax =
+                      item.selectedSize && item.sizeStock
+                        ? (item.sizeStock[item.selectedSize] ?? item.stock ?? 20)
+                        : (item.stock ?? 20);
+                    const maxQty = Math.min(sizeMax, 20);
                     return (
-                      <li key={item.id} className="flex items-center gap-4 px-6 py-5">
+                      <li key={item.cartKey} className="flex items-center gap-4 px-6 py-5">
                         {/* Imagem */}
                         <div className="w-16 h-16 flex-shrink-0 bg-gray-50 rounded-xl border border-gray-100 overflow-hidden">
                           <img
                             src={item.image}
                             alt={item.name}
-                            className="w-full h-full object-contain p-1"
+                            className="w-full h-full object-cover"
                             onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
                           />
                         </div>
 
-                        {/* Nome + marca */}
+                        {/* Nome + marca + tamanho */}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-800 leading-tight line-clamp-2">
                             {item.name}
                           </p>
-                          <p className="text-xs text-gray-400 mt-0.5">{item.quantity}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <p className="text-xs text-gray-400">{item.brand}</p>
+                            {item.selectedSize && (
+                              <span className="text-[10px] font-bold bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                                {item.selectedSize}
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         {/* Preço unitário */}
@@ -92,7 +103,7 @@ export default function CartPage() {
                         {/* Seletor de quantidade */}
                         <select
                           value={item.cartQuantity}
-                          onChange={(e) => setQuantity(item.id, Number(e.target.value))}
+                          onChange={(e) => setQuantity(item.cartKey, Number(e.target.value))}
                           className="border border-gray-200 rounded-lg text-sm text-gray-700 px-2 py-1.5 bg-white focus:outline-none focus:border-[#e8001c] cursor-pointer flex-shrink-0"
                         >
                           {Array.from({ length: maxQty }, (_, i) => i + 1).map((n) => (
@@ -102,7 +113,7 @@ export default function CartPage() {
 
                         {/* Lixeira */}
                         <button
-                          onClick={() => removeItem(item.id)}
+                          onClick={() => removeItem(item.cartKey)}
                           className="text-gray-300 hover:text-[#e8001c] transition-colors flex-shrink-0"
                           title="Remover item"
                         >

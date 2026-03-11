@@ -1,9 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import {
-  Home, ChevronRight, Plus, ArrowDown,
-  PackageSearch, Tag, Percent,
-} from "lucide-react";
+import { Home, ChevronRight, PackageSearch, Plus } from "lucide-react";
 import Header from "@/components/Header";
 import SiteFooter from "@/components/SiteFooter";
 import { useCart } from "@/hooks/useCart";
@@ -12,185 +9,186 @@ import {
   fetchProductsByCategory,
   fetchProductsByCategories,
   fetchProductsOnSale,
+  fetchProductsBySection,
 } from "@/services/productsService";
 import { allProducts } from "@/data/products";
 import type { Product } from "@/types";
 
-// ─── Configuração de cada "coleção" ──────────────────────────────────────────
-type CollectionType = "category" | "multi-category" | "discount";
+// ─── Configuração de cada coleção ─────────────────────────────────────────────
+type CollectionType = "category" | "multi-category" | "discount" | "section";
 
 interface CollectionConfig {
-  label:       string;
-  description: string;
-  icon?:       React.ReactNode;
-  type:        CollectionType;
-  // category
+  label:        string;
+  description:  string;
+  type:         CollectionType;
   category?:    string;
   categories?:  string[];
-  // discount
+  section?:     string;
   minDiscount?: number;
 }
 
 const COLLECTIONS: Record<string, CollectionConfig> = {
-  // ── Abas de navegação ──────────────────────────────────────────────────────
-  medicamentos: {
-    label:       "Medicamentos",
-    description: "Analgésicos, antitérmicos, antibióticos e medicamentos em geral.",
+  feminino: {
+    label:       "Feminino",
+    description: "Moda feminina: roupas, calçados e acessórios para todas as ocasiões.",
     type:        "category",
-    category:    "medicamentos",
+    category:    "feminino",
   },
-  ofertas: {
-    label:       "Ofertas",
-    description: "Todos os produtos com desconto. Aproveite as melhores promoções da RB Farma!",
-    icon:        <Tag className="h-5 w-5 text-primary" />,
+  masculino: {
+    label:       "Masculino",
+    description: "Moda masculina: camisas, calças, tênis e tudo que você precisa.",
+    type:        "category",
+    category:    "masculino",
+  },
+  sapatos: {
+    label:       "Sapatos",
+    description: "Tênis, sandálias, sapatos e calçados para todos os estilos.",
+    type:        "category",
+    category:    "Calçados",
+  },
+  bolsas: {
+    label:       "Bolsas",
+    description: "Bolsas, mochilas e malas para o dia a dia e ocasiões especiais.",
+    type:        "category",
+    category:    "bolsas",
+  },
+  acessorios: {
+    label:       "Acessórios",
+    description: "Perfumes, joias, relógios e acessórios para complementar o seu look.",
+    type:        "multi-category",
+    categories:  ["acessorios", "Perfumes"],
+  },
+  novidades: {
+    label:       "Novidades",
+    description: "Os lançamentos mais recentes da temporada. Seja o primeiro a conferir!",
+    type:        "section",
+    section:     "Novidades",
+  },
+  promocoes: {
+    label:       "Promoções",
+    description: "Os melhores preços com descontos imperdíveis. Aproveite!",
     type:        "discount",
     minDiscount: 0,
   },
-  descontos: {
-    label:       "Descontos",
-    description: "Produtos com mais de 25% de desconto. As maiores economias estão aqui!",
-    icon:        <Percent className="h-5 w-5 text-green-600" />,
-    type:        "discount",
-    minDiscount: 25,
-  },
-  beleza: {
-    label:       "Beleza",
-    description: "Maquiagem, cabelos, unhas e produtos de beleza em geral.",
+  // Categorias dos produtos cadastrados
+  camisas: {
+    label:       "Camisas",
+    description: "Camisas, camisetas e tops para todos os estilos.",
     type:        "category",
-    category:    "beleza",
+    category:    "Camisas",
   },
-  "bem-estar": {
-    label:       "Bem-estar",
-    description: "Vitaminas, suplementos e produtos para o seu equilíbrio e saúde diária.",
-    type:        "multi-category",
-    categories:  ["vitaminas", "higiene", "suplementos"],
-  },
-
-  // ── Abas de categoria (CategoryHighlight) ─────────────────────────────────
-  skincare: {
-    label:       "Cuidados com a Pele",
-    description: "Hidratantes, séruns, tônicos e tudo para sua rotina de skin care.",
+  calcados: {
+    label:       "Calçados",
+    description: "Tênis, sandálias e sapatos para todos os estilos.",
     type:        "category",
-    category:    "skincare",
+    category:    "Calçados",
   },
-  suplementos: {
-    label:       "Suplementos",
-    description: "Whey, creatina, BCAA, termogênicos e muito mais para sua performance.",
+  shorts: {
+    label:       "Shorts",
+    description: "Shorts jeans, moletom e esportivos para o seu estilo.",
     type:        "category",
-    category:    "suplementos",
-  },
-  dermocosmeticos: {
-    label:       "Dermocosméticos",
-    description: "Cosméticos com ação dermatológica para saúde e beleza da sua pele.",
-    type:        "category",
-    category:    "dermocosmeticos",
+    category:    "Shorts",
   },
   perfumes: {
     label:       "Perfumes",
-    description: "Fragrâncias nacionais e importadas para todos os estilos.",
+    description: "Fragrâncias masculinas e femininas para todos os gostos.",
     type:        "category",
-    category:    "perfumes",
-  },
-  manipulados: {
-    label:       "Manipulados",
-    description: "Fórmulas personalizadas manipuladas com qualidade e precisão.",
-    type:        "category",
-    category:    "manipulados",
-  },
-  vitaminas: {
-    label:       "Vitaminas",
-    description: "Vitaminas e minerais para complementar sua saúde diária.",
-    type:        "category",
-    category:    "vitaminas",
-  },
-  higiene: {
-    label:       "Higiene Pessoal",
-    description: "Shampoos, sabonetes, desodorantes e produtos de higiene.",
-    type:        "category",
-    category:    "higiene",
+    category:    "Perfumes",
   },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-// ─── Card de produto — grid full-width ───────────────────────────────────────
+function installments(price: number): string | null {
+  if (price < 30) return null;
+  const parcelas = price >= 150 ? 6 : 3;
+  const valor = price / parcelas;
+  return `${parcelas}x de ${fmt(valor)}`;
+}
+
+// ─── Card de produto — estilo fashion ────────────────────────────────────────
 function ProductGridCard({ product }: { product: Product }) {
   const { addItem } = useCart();
   const navigate    = useNavigate();
-  const outOfStock  = product.stock !== null && product.stock === 0;
+  const { name, originalPrice, price, discount, image, stock } = product;
+  const outOfStock  = stock !== null && stock === 0;
+  const isPromo     = discount > 0;
+  const parcelamento = installments(price);
 
   return (
     <div
       onClick={() => navigate(`/produto/${product.id}`, { state: { product } })}
-      className={`bg-background border border-border rounded-2xl p-4 flex flex-col gap-3
-        hover:shadow-lg hover:border-primary/30 transition-all duration-200 cursor-pointer group relative
-        ${outOfStock ? "opacity-60" : ""}`}
+      className={`flex flex-col bg-background rounded-lg overflow-hidden cursor-pointer group ${
+        outOfStock ? "opacity-60" : ""
+      }`}
     >
-      {/* Badge desconto */}
-      {product.discount > 0 && !outOfStock && (
-        <div className="absolute top-3 left-3 flex items-center gap-0.5 bg-discount text-discount-foreground text-xs font-bold px-2 py-0.5 rounded-full z-10">
-          <ArrowDown className="h-3 w-3" />
-          {product.discount}%
-        </div>
-      )}
+      {/* Imagem — proporção retrato 3:4 */}
+      <div className="relative bg-gray-50 rounded-lg overflow-hidden" style={{ aspectRatio: "3/4" }}>
+        {/* Badge */}
+        {outOfStock ? (
+          <span className="absolute top-3 left-3 bg-gray-500 text-white text-[10px] font-bold px-2.5 py-1 z-10 tracking-wider uppercase">
+            Esgotado
+          </span>
+        ) : stock !== null && stock <= 5 ? (
+          <span className="absolute top-3 left-3 bg-amber-500 text-white text-[10px] font-bold px-2.5 py-1 z-10 tracking-wider uppercase">
+            Últimas {stock}
+          </span>
+        ) : isPromo ? (
+          <span className="absolute top-3 left-3 bg-gray-900 text-white text-[10px] font-bold px-2.5 py-1 z-10 tracking-wider uppercase">
+            Promoção
+          </span>
+        ) : (
+          <span className="absolute top-3 left-3 bg-gray-900 text-white text-[10px] font-bold px-2.5 py-1 z-10 tracking-wider uppercase">
+            Nova Coleção
+          </span>
+        )}
 
-      {/* Badge esgotado */}
-      {outOfStock && (
-        <span className="absolute top-3 right-3 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full z-10">
-          Esgotado
-        </span>
-      )}
-
-      {/* Imagem */}
-      <div className="w-full aspect-square flex items-center justify-center bg-secondary/40 rounded-xl overflow-hidden">
         <img
-          src={product.image}
-          alt={product.name}
-          className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
+          src={image}
+          alt={name}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
         />
+
+        {!outOfStock && (
+          <button
+            onClick={(e) => { e.stopPropagation(); addItem(product); }}
+            title="Adicionar ao carrinho"
+            className="absolute bottom-3 right-3 w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-900 hover:text-white text-gray-900"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
-      {/* Infos */}
-      <div className="flex-1 flex flex-col gap-1">
-        <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">{product.name}</p>
-        <p className="text-xs text-muted-foreground">{product.brand} · {product.quantity}</p>
-      </div>
-
-      {/* Preço + botão */}
-      <div className="flex items-end justify-between mt-auto gap-2">
-        <div className="min-w-0">
-          {product.discount > 0 && (
-            <p className="text-xs text-muted-foreground line-through truncate">{fmt(product.originalPrice)}</p>
+      {/* Info */}
+      <div className="pt-3 pb-1 px-0.5">
+        <p className="text-sm text-foreground font-medium leading-snug line-clamp-2 mb-2">{name}</p>
+        <div>
+          {isPromo && originalPrice > price && (
+            <p className="text-xs text-muted-foreground line-through leading-none mb-0.5">
+              {fmt(originalPrice)}
+            </p>
           )}
-          <p className="text-base font-bold text-foreground">{fmt(product.price)}</p>
+          <p className="text-base font-bold text-foreground leading-none">{fmt(price)}</p>
+          {parcelamento && (
+            <p className="text-xs text-muted-foreground mt-1">{parcelamento}</p>
+          )}
         </div>
-        <button
-          onClick={(e) => { e.stopPropagation(); if (!outOfStock) addItem(product); }}
-          disabled={outOfStock}
-          title={outOfStock ? "Produto esgotado" : "Adicionar ao carrinho"}
-          className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors shrink-0 ${
-            outOfStock
-              ? "bg-muted text-muted-foreground cursor-not-allowed"
-              : "bg-primary text-primary-foreground hover:bg-primary-hover"
-          }`}
-        >
-          <Plus className="h-4 w-4" />
-        </button>
       </div>
     </div>
   );
 }
 
-// ─── Skeleton loading ─────────────────────────────────────────────────────────
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 function SkeletonCard() {
   return (
-    <div className="bg-secondary/50 rounded-2xl p-4 flex flex-col gap-3 animate-pulse">
-      <div className="w-full aspect-square bg-secondary rounded-xl" />
-      <div className="h-3 bg-secondary rounded w-3/4" />
-      <div className="h-3 bg-secondary rounded w-1/2" />
-      <div className="h-5 bg-secondary rounded w-1/3 mt-auto" />
+    <div className="flex flex-col gap-3 animate-pulse">
+      <div className="w-full bg-gray-100 rounded-lg" style={{ aspectRatio: "3/4" }} />
+      <div className="h-3 bg-gray-100 rounded w-3/4" />
+      <div className="h-3 bg-gray-100 rounded w-1/2" />
+      <div className="h-4 bg-gray-100 rounded w-1/3" />
     </div>
   );
 }
@@ -205,14 +203,12 @@ export default function CategoryPage() {
 
   const config = COLLECTIONS[slug];
 
-  // Scroll to top + entrada animada
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
     const t = setTimeout(() => setVisible(true), 30);
     return () => clearTimeout(t);
   }, [slug]);
 
-  // Busca produtos conforme o tipo de coleção
   useEffect(() => {
     if (!config) return;
     setLoading(true);
@@ -230,6 +226,8 @@ export default function CategoryPage() {
             data = await fetchProductsByCategories(config.categories);
           } else if (config.type === "discount") {
             data = await fetchProductsOnSale(config.minDiscount ?? 0);
+          } else if (config.type === "section" && config.section) {
+            data = await fetchProductsBySection(config.section);
           }
 
           setProducts(data);
@@ -251,6 +249,7 @@ export default function CategoryPage() {
           .filter((p) => p.discount > (config.minDiscount ?? 0))
           .sort((a, b) => b.discount - a.discount);
       }
+      // "section" type has no local fallback
 
       setProducts(local);
       setLoading(false);
@@ -267,7 +266,7 @@ export default function CategoryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-white">
       <Header />
 
       <div
@@ -276,25 +275,22 @@ export default function CategoryPage() {
         }`}
       >
         {/* ── Breadcrumb ──────────────────────────────────────────────────────── */}
-        <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6 flex-wrap">
-          <Link to="/" className="flex items-center gap-1 hover:text-primary transition-colors">
+        <nav className="flex items-center gap-1.5 text-xs text-gray-400 mb-6 flex-wrap">
+          <Link to="/" className="flex items-center gap-1 hover:text-gray-700 transition-colors">
             <Home className="h-3.5 w-3.5" /> Início
           </Link>
           <ChevronRight className="h-3 w-3" />
-          <span className="text-foreground font-medium">{config.label}</span>
+          <span className="text-gray-700 font-medium">{config.label}</span>
         </nav>
 
         {/* ── Cabeçalho ───────────────────────────────────────────────────────── */}
         <div className="mb-8">
-          <div className="flex items-center gap-2 mb-1">
-            {config.icon}
-            <h1 className="text-2xl md:text-3xl font-extrabold text-foreground">
-              {config.label}
-            </h1>
-          </div>
-          <p className="text-sm text-muted-foreground">{config.description}</p>
+          <h1 className="text-2xl md:text-3xl font-black text-gray-900 uppercase tracking-wide mb-1">
+            {config.label}
+          </h1>
+          <p className="text-sm text-gray-400">{config.description}</p>
           {!loading && (
-            <p className="text-xs text-muted-foreground mt-2">
+            <p className="text-xs text-gray-400 mt-2">
               {products.length} produto{products.length !== 1 ? "s" : ""} encontrado{products.length !== 1 ? "s" : ""}
             </p>
           )}
@@ -302,29 +298,31 @@ export default function CategoryPage() {
 
         {/* ── Grid ─────────────────────────────────────────────────────────────── */}
         {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
             {Array.from({ length: 10 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>
         ) : products.length === 0 ? (
           <div className="flex flex-col items-center py-24 gap-4 text-center">
-            <PackageSearch className="h-16 w-16 text-muted-foreground/40" />
+            <PackageSearch className="h-16 w-16 text-gray-200" />
             <div>
-              <p className="text-xl font-bold text-foreground mb-1">Nenhum produto encontrado</p>
-              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+              <p className="text-xl font-black text-gray-900 mb-1 uppercase tracking-wide">
+                Nenhum produto encontrado
+              </p>
+              <p className="text-sm text-gray-400 max-w-sm mx-auto">
                 {config.type === "discount"
-                  ? "Nenhum produto com esse desconto no momento. Volte em breve!"
+                  ? "Nenhum produto com desconto no momento. Volte em breve!"
                   : "Ainda não temos produtos nesta categoria. Em breve teremos novidades!"}
               </p>
             </div>
             <button
               onClick={() => navigate("/")}
-              className="mt-2 bg-primary text-primary-foreground px-6 py-2.5 rounded-full font-semibold hover:bg-primary-hover transition-colors"
+              className="mt-2 bg-gray-900 text-white px-8 py-3 text-sm font-bold uppercase tracking-widest hover:bg-black transition-colors"
             >
               Voltar ao início
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
             {products.map((p) => (
               <ProductGridCard key={p.id} product={p} />
             ))}

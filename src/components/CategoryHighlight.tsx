@@ -1,59 +1,76 @@
-import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
-import categorySkin    from "@/assets/category-skin.jpg";
-import categoryDermo   from "@/assets/category-dermo.jpg";
-import categoryPerfume from "@/assets/category-perfume.jpg";
 
 const categories = [
   {
-    label: "Cuidados com a Pele",
-    slug:  "skincare",
-    image: categorySkin,
+    subtitle:   "Nova Coleção",
+    label:      "FEMININO",
+    slug:       "feminino",
+    bg:         "#7D2828",
+    circle:     "rgba(255,255,255,0.08)",
   },
   {
-    label: "Suplementos",
-    slug:  "suplementos",
-    image: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&q=80",
+    subtitle:   "Look Atual",
+    label:      "MASCULINO",
+    slug:       "masculino",
+    bg:         "#222222",
+    circle:     "rgba(255,255,255,0.07)",
   },
   {
-    label: "Dermocosmeticos",
-    slug:  "dermocosmeticos",
-    image: categoryDermo,
-  },
-  {
-    label: "Perfumes",
-    slug:  "perfumes",
-    image: categoryPerfume,
-  },
-  {
-    label: "Manipulados",
-    slug:  "manipulados",
-    image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=800&q=80",
+    subtitle:   "Detalhes que Importam",
+    label:      "ACESSÓRIOS",
+    slug:       "acessorios",
+    bg:         "#7D4020",
+    circle:     "rgba(255,255,255,0.08)",
   },
 ];
 
 const CategoryHighlight = () => {
   return (
-    <section className="container mx-auto py-8">
-      <h2 className="text-xl md:text-2xl font-bold text-foreground mb-5">Cuidados que voce merece</h2>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {categories.map(({ label, slug, image }) => (
-          <Link
+    <section className="container mx-auto py-10 px-4">
+      {/* Título com linhas decorativas */}
+      <div className="flex items-center gap-4 mb-8">
+        <div className="flex-1 h-px bg-gray-200" />
+        <h2 className="text-sm font-bold text-foreground tracking-[0.2em] uppercase whitespace-nowrap px-2">
+          Por Categoria
+        </h2>
+        <div className="flex-1 h-px bg-gray-200" />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {categories.map(({ subtitle, label, slug, bg, circle }) => (
+          <div
             key={slug}
-            to={`/categoria/${slug}`}
-            className="relative rounded-card overflow-hidden group h-56 md:h-72 block"
+            className="relative rounded-xl overflow-hidden"
+            style={{ backgroundColor: bg, minHeight: 200 }}
           >
-            <img
-              src={image}
-              alt={label}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            {/* Círculos decorativos */}
+            <div
+              className="absolute right-[-20px] top-1/2 -translate-y-1/2 w-48 h-48 rounded-full"
+              style={{ backgroundColor: circle }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-foreground/70 to-transparent" />
-            <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
-              <span className="text-sm font-semibold text-background">{label}</span>
-              <ArrowRight className="h-4 w-4 text-background" />
+            <div
+              className="absolute right-[-40px] top-1/2 -translate-y-1/2 w-64 h-64 rounded-full border"
+              style={{ borderColor: circle }}
+            />
+
+            {/* Conteúdo */}
+            <div className="relative z-10 p-8 flex flex-col gap-2 h-full" style={{ minHeight: 200 }}>
+              <p className="text-xs text-white/70 font-semibold tracking-widest uppercase">
+                {subtitle}
+              </p>
+              <h3 className="text-3xl md:text-4xl font-black text-white tracking-tight mt-1">
+                {label}
+              </h3>
+              <div className="mt-auto pt-6">
+                <Link
+                  to={`/categoria/${slug}`}
+                  className="inline-block bg-gray-900 text-white text-xs font-bold px-6 py-2.5 tracking-widest uppercase hover:bg-black transition-colors"
+                >
+                  Comprar
+                </Link>
+              </div>
             </div>
-          </Link>
+          </div>
         ))}
       </div>
     </section>

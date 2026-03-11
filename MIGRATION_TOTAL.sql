@@ -37,11 +37,15 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Trigger: cria perfil automaticamente ao registrar usuário
 CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
 BEGIN
-  INSERT INTO profiles (id, name)
+  INSERT INTO public.profiles (id, name)
   VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'name', ''))
   ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
   RETURN NEW;
 END;
 $$;
@@ -273,8 +277,11 @@ DO $$ BEGIN CREATE POLICY "authenticated manage fornecedores" ON fornecedores FO
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- FK de produtos → fornecedores (adicionada depois da criação de ambas)
-ALTER TABLE products ADD CONSTRAINT IF NOT EXISTS products_fornecedor_id_fkey
-  FOREIGN KEY (fornecedor_id) REFERENCES fornecedores(id) ON DELETE SET NULL;
+DO $$ BEGIN
+  ALTER TABLE products ADD CONSTRAINT products_fornecedor_id_fkey
+    FOREIGN KEY (fornecedor_id) REFERENCES fornecedores(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 
 -- ────────────────────────────────────────────────────────────────

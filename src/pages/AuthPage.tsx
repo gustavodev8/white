@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
+import { STORE_NAME } from "@/config/storeConfig";
 import {
   Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, ChevronLeft,
   Headphones, ShieldCheck,
@@ -19,7 +20,7 @@ function maskPhone(v: string) {
     .replace(/(\d{5})(\d)/, "$1-$2");
 }
 
-/* ── Input estilo Drogasil ────────────────────────────────────── */
+/* ── Input base ───────────────────────────────────────────────── */
 const inputCls =
   "w-full bg-gray-100 border-0 rounded-2xl px-4 py-3.5 text-sm text-gray-800 " +
   "placeholder-gray-400 focus:outline-none focus:bg-gray-200 transition-colors";
@@ -291,7 +292,7 @@ function RegisterForm({
           <CheckCircle2 className="h-12 w-12 text-green-500" />
         </div>
         <div>
-          <p className="text-xl font-bold text-gray-800">Bem-vindo(a) à RB Farma!</p>
+          <p className="text-xl font-bold text-gray-800">Bem-vindo(a) à {STORE_NAME}!</p>
           <p className="text-sm text-gray-500 mt-1">Sua conta foi criada com sucesso, {name.split(" ")[0]}!</p>
         </div>
         <Loader2 className="h-5 w-5 text-gray-300 animate-spin" />
@@ -343,7 +344,7 @@ function RegisterForm({
         {/* Info box */}
         <div className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-xs text-gray-500 leading-relaxed">
           Ao se cadastrar você também acessa o{" "}
-          <span className="font-semibold text-[#e8001c]">Programa de Fidelidade RB Farma</span>
+          <span className="font-semibold text-[#e8001c]">Programa de Fidelidade {STORE_NAME}</span>
           {" "}com descontos exclusivos e vantagens especiais!
         </div>
 
@@ -465,12 +466,8 @@ export default function AuthPage() {
       <header className="border-b border-gray-100 px-6 md:px-10 py-4 flex items-center justify-between">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
-          <svg viewBox="0 0 24 24" className="h-6 w-6 text-[#e8001c]" fill="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h4c2.21 0 4 1.79 4 4s-1.79 4-4 4zm0-6h-1v4h1c1.1 0 2-.9 2-2s-.9-2-2-2z" />
-          </svg>
-          <span className="text-xl font-extrabold text-[#e8001c] tracking-tight leading-none">
-            RB{" "}
-            <span className="bg-[#FFD600] text-[#e8001c] px-1.5 py-0.5 rounded text-lg">FARMA</span>
+          <span className="text-xl font-extrabold text-gray-900 tracking-tight leading-none">
+            {STORE_NAME}
           </span>
         </Link>
 

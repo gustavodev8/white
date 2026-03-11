@@ -152,7 +152,7 @@ function PixScreen({
                   alt="QR Code PIX"
                   className="w-48 h-48 rounded-lg"
                   onError={(e) => { (e.target as HTMLImageElement).src =
-                    `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(pixCode || "RBFARMA")}&bgcolor=ffffff&margin=12`; }}
+                    `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(pixCode || "WHITE.COM")}&bgcolor=ffffff&margin=12`; }}
                 />
               </div>
 

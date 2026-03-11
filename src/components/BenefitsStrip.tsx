@@ -1,11 +1,11 @@
-import { Truck, Star, MapPin, Heart, Stethoscope } from "lucide-react";
+import { Truck, Star, RotateCcw, Tag, ShieldCheck } from "lucide-react";
 
 const benefits = [
-  { icon: Truck, text: "Receba em ate 1 hora com a entrega rapida!" },
-  { icon: Star, text: "Ganhe pontos em suas compras." },
-  { icon: MapPin, text: "Retire na farmacia em ate 30min, gratis!" },
-  { icon: Heart, text: "Descontos e beneficios em medicamentos." },
-  { icon: Stethoscope, text: "Exames, testes, vacinas e muito mais." },
+  { icon: Truck,       text: "Entrega rápida para todo o Brasil" },
+  { icon: Star,        text: "Ganhe pontos em cada compra" },
+  { icon: RotateCcw,   text: "Troca fácil em até 30 dias" },
+  { icon: Tag,         text: "Novidades toda semana na coleção" },
+  { icon: ShieldCheck, text: "Compra 100% segura e garantida" },
 ];
 
 const BenefitsStrip = () => {

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Camera, ImagePlus, Link2, Loader2, X } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,15 +19,17 @@ import { useActiveSections } from "@/hooks/useSections";
 import type { ProductCategory } from "@/types";
 
 const CATEGORIES: { value: ProductCategory; label: string }[] = [
-  { value: "medicamentos",    label: "Medicamentos"        },
-  { value: "vitaminas",       label: "Vitaminas"           },
-  { value: "skincare",        label: "Cuidados com a Pele" },
-  { value: "dermocosmeticos", label: "Dermocosméticos"     },
-  { value: "higiene",         label: "Higiene Pessoal"     },
-  { value: "beleza",          label: "Beleza"              },
-  { value: "suplementos",     label: "Suplementos"         },
-  { value: "perfumes",        label: "Perfumes"            },
-  { value: "manipulados",     label: "Manipulados"         },
+  { value: "Camisas",    label: "Camisas / Camisetas" },
+  { value: "Calçados",   label: "Calçados / Tênis"    },
+  { value: "Shorts",     label: "Shorts / Bermudas"   },
+  { value: "Calças",     label: "Calças / Jeans"      },
+  { value: "Vestidos",   label: "Vestidos / Saias"    },
+  { value: "Bolsas",     label: "Bolsas / Mochilas"   },
+  { value: "Perfumes",   label: "Perfumes"            },
+  { value: "acessorios", label: "Acessórios"          },
+  { value: "feminino",   label: "Feminino (Geral)"    },
+  { value: "masculino",  label: "Masculino (Geral)"   },
+  { value: "infantil",   label: "Infantil"            },
 ];
 
 // ─── Schema de validação ──────────────────────────────────────────────────────
@@ -39,8 +42,6 @@ const schema = z.object({
   category:      z.string().min(1, "Categoria obrigatória"),
   sections:      z.array(z.string()).min(1, "Selecione ao menos uma seção"),
   isActive:      z.boolean(),
-  /** null = sem controle de estoque; número = quantidade disponível */
-  stock:         z.union([z.coerce.number().int().min(0, "Mínimo 0"), z.literal(null)]),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -61,6 +62,7 @@ export interface AdminProductFormProps {
     sections:      string[];
     isActive:      boolean;
     stock:         number | null;
+    sizeStock?:    Record<string, number> | null;
   };
   onSuccess: () => void;
   onCancel:  () => void;
@@ -72,36 +74,74 @@ export default function AdminProductForm({
   onSuccess,
   onCancel,
 }: AdminProductFormProps) {
-  const isEditing  = Boolean(product);
-  const fileRef    = useRef<HTMLInputElement>(null);
-  const allSections = useActiveSections(); // seções vindas do Supabase
+  const isEditing   = Boolean(product);
+  const fileRef     = useRef<HTMLInputElement>(null);
+  const cameraRef   = useRef<HTMLInputElement>(null);
+  const allSections = useActiveSections();
 
   const [imageFile,      setImageFile]      = useState<File | null>(null);
   const [imageUrl,       setImageUrl]       = useState<string>(product?.image ?? "");
   const [imagePreview,   setImagePreview]   = useState<string>(product?.image ?? "");
-  const [stockEnabled,   setStockEnabled]   = useState<boolean>(product?.stock !== null && product?.stock !== undefined);
+  const [compressedSize, setCompressedSize] = useState<number | null>(null);
+  const [compressing,    setCompressing]    = useState(false);
   const [submitting,     setSubmitting]     = useState(false);
   const [error,          setError]          = useState<string | null>(null);
+
+  /** Comprime imagem via canvas — alvo ~120 KB, máx 900px de largura */
+  async function compressImage(file: File): Promise<File> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.src = objectUrl;
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const MAX_W = 900;
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W; }
+
+        const canvas = document.createElement("canvas");
+        canvas.width  = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const TARGET_BYTES = 130 * 1024; // 130 KB
+        let quality = 0.82;
+        const tryNext = () => {
+          canvas.toBlob((blob) => {
+            if (!blob) { resolve(file); return; }
+            if (blob.size <= TARGET_BYTES || quality < 0.25) {
+              resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+            } else {
+              quality -= 0.08;
+              tryNext();
+            }
+          }, "image/jpeg", quality);
+        };
+        tryNext();
+      };
+      img.onerror = () => resolve(file); // se falhar, usa original
+    });
+  }
 
   const {
     register,
     control,
     handleSubmit,
     watch,
-    setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       name:          product?.name          ?? "",
       brand:         product?.brand         ?? "",
-      quantity:      product?.quantity      ?? "1 un",
+      quantity:      product?.quantity      ?? "",
       price:         product?.price         ?? 0,
       originalPrice: product?.originalPrice ?? 0,
-      category:      product?.category      ?? "medicamentos",
+      category:      product?.category      ?? "Camisas",
       sections:      product?.sections      ?? [],
       isActive:      product?.isActive      ?? true,
-      stock:         product?.stock         ?? null,
     },
   });
 
@@ -117,22 +157,38 @@ export default function AdminProductForm({
   function handleUrlChange(e: React.ChangeEvent<HTMLInputElement>) {
     const url = e.target.value;
     setImageUrl(url);
-    if (!imageFile) setImagePreview(url); // só usa URL se não tiver arquivo
+    setImageFile(null);
+    setCompressedSize(null);
+    setImagePreview(url);
   }
 
-  // Preview de imagem ao selecionar arquivo (sobrepõe a URL)
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  // Ao selecionar arquivo ou tirar foto → comprime antes de mostrar/enviar
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
+    setCompressing(true);
+    setImagePreview("");
+    try {
+      const compressed = await compressImage(file);
+      setImageFile(compressed);
+      setCompressedSize(compressed.size);
+      setImagePreview(URL.createObjectURL(compressed));
+      setImageUrl(""); // limpa URL quando usa arquivo
+    } finally {
+      setCompressing(false);
+      // reseta o input para permitir re-seleção do mesmo arquivo
+      if (fileRef.current)   fileRef.current.value   = "";
+      if (cameraRef.current) cameraRef.current.value = "";
+    }
   }
 
-  // Remove o arquivo selecionado e volta a usar a URL
+  // Remove o arquivo selecionado e volta ao campo URL
   function handleRemoveFile() {
     setImageFile(null);
+    setCompressedSize(null);
     setImagePreview(imageUrl);
-    if (fileRef.current) fileRef.current.value = "";
+    if (fileRef.current)   fileRef.current.value   = "";
+    if (cameraRef.current) cameraRef.current.value = "";
   }
 
   // Submit
@@ -151,7 +207,8 @@ export default function AdminProductForm({
         category:      values.category as ProductCategory,
         sections:      values.sections,
         isActive:      values.isActive,
-        stock:         stockEnabled ? (values.stock ?? 0) : null,
+        stock:         null,
+        sizeStock:     null,
       };
 
       if (isEditing && product) {
@@ -172,21 +229,118 @@ export default function AdminProductForm({
       {/* Nome */}
       <div className="space-y-1">
         <Label htmlFor="name">Nome do produto *</Label>
-        <Input id="name" {...register("name")} placeholder="Ex: Dipirona 500mg" />
+        <Input id="name" {...register("name")} placeholder="Ex: Camisa Polo Slim Fit Preta" />
         {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
+      </div>
+
+      {/* Imagem */}
+      <div className="border border-border rounded-xl p-4 space-y-3">
+        <Label className="text-sm font-semibold">Foto do produto</Label>
+
+        <div className="flex gap-4 items-start">
+          {/* Preview */}
+          <div className="shrink-0">
+            {compressing ? (
+              <div className="w-24 h-32 rounded-lg border border-border bg-muted flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-[10px]">Comprimindo</span>
+              </div>
+            ) : imagePreview ? (
+              <div className="relative">
+                <img
+                  src={imagePreview}
+                  alt="Preview"
+                  className="w-24 h-32 object-cover rounded-lg border border-border"
+                  onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
+                />
+                {compressedSize !== null && (
+                  <span className="absolute bottom-1 left-1 right-1 text-center text-[9px] font-semibold bg-green-600 text-white rounded px-1 py-0.5">
+                    {Math.round(compressedSize / 1024)} KB
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="w-24 h-32 rounded-lg border-2 border-dashed border-border bg-muted flex items-center justify-center text-muted-foreground">
+                <ImagePlus className="h-6 w-6 opacity-30" />
+              </div>
+            )}
+          </div>
+
+          {/* Controles */}
+          <div className="flex-1 flex flex-col gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-start gap-2"
+              onClick={() => cameraRef.current?.click()}
+              disabled={compressing}
+            >
+              <Camera className="h-4 w-4" />
+              Câmera
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-start gap-2"
+              onClick={() => fileRef.current?.click()}
+              disabled={compressing}
+            >
+              <ImagePlus className="h-4 w-4" />
+              Galeria / Arquivo
+            </Button>
+
+            {imageFile && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleRemoveFile}
+                className="w-full justify-start gap-2 text-destructive hover:text-destructive"
+              >
+                <X className="h-4 w-4" />
+                Remover
+              </Button>
+            )}
+
+            <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
+              <div className="flex-1 h-px bg-border" />
+              ou link
+              <div className="flex-1 h-px bg-border" />
+            </div>
+
+            <div className="relative">
+              <Link2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                type="url"
+                value={imageUrl}
+                onChange={handleUrlChange}
+                placeholder="https://..."
+                disabled={Boolean(imageFile)}
+                className="pl-8 text-sm"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Inputs ocultos */}
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
+        <input ref={fileRef}   type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
       </div>
 
       {/* Marca */}
       <div className="space-y-1">
         <Label htmlFor="brand">Marca *</Label>
-        <Input id="brand" {...register("brand")} placeholder="Ex: Medley" />
+        <Input id="brand" {...register("brand")} placeholder="Ex: white.com" />
         {errors.brand && <p className="text-xs text-destructive">{errors.brand.message}</p>}
       </div>
 
       {/* Quantidade */}
       <div className="space-y-1">
         <Label htmlFor="quantity">Quantidade / Apresentação *</Label>
-        <Input id="quantity" {...register("quantity")} placeholder="Ex: 20 comprimidos" />
+        <Input id="quantity" {...register("quantity")} placeholder="Ex: P / M / G / GG  ou  36 / 37 / 38" />
         {errors.quantity && <p className="text-xs text-destructive">{errors.quantity.message}</p>}
       </div>
 
@@ -287,125 +441,6 @@ export default function AdminProductForm({
         />
         {errors.sections && (
           <p className="text-xs text-destructive">{errors.sections.message}</p>
-        )}
-      </div>
-
-      {/* Imagem */}
-      <div className="space-y-2">
-        <Label>Foto do produto</Label>
-
-        {/* Preview */}
-        {imagePreview && (
-          <img
-            src={imagePreview}
-            alt="Preview"
-            className="w-24 h-24 object-contain rounded-lg border border-border bg-secondary"
-            onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
-          />
-        )}
-
-        {/* URL */}
-        <div className="space-y-1">
-          <Label htmlFor="imageUrl" className="text-xs text-muted-foreground">
-            Cole o link da imagem
-          </Label>
-          <Input
-            id="imageUrl"
-            type="url"
-            value={imageUrl}
-            onChange={handleUrlChange}
-            placeholder="https://exemplo.com/foto-produto.jpg"
-            disabled={Boolean(imageFile)}
-          />
-        </div>
-
-        {/* Separador */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <div className="flex-1 h-px bg-border" />
-          ou
-          <div className="flex-1 h-px bg-border" />
-        </div>
-
-        {/* Upload de arquivo */}
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => fileRef.current?.click()}
-          >
-            {imageFile ? "Trocar arquivo" : "Selecionar arquivo"}
-          </Button>
-          {imageFile && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleRemoveFile}
-              className="text-destructive hover:text-destructive text-xs"
-            >
-              ✕ Remover arquivo
-            </Button>
-          )}
-          {imageFile && (
-            <span className="text-xs text-muted-foreground truncate max-w-[150px]">
-              {imageFile.name}
-            </span>
-          )}
-        </div>
-
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleFileChange}
-        />
-      </div>
-
-      {/* ── Estoque ──────────────────────────────────────────────────────────── */}
-      <div className="space-y-3 border border-border rounded-xl p-4">
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="stockEnabled"
-            checked={stockEnabled}
-            onCheckedChange={(v) => {
-              const on = Boolean(v);
-              setStockEnabled(on);
-              if (!on) setValue("stock", null);
-              else setValue("stock", 0);
-            }}
-          />
-          <Label htmlFor="stockEnabled" className="cursor-pointer font-medium">
-            Controlar estoque deste produto
-          </Label>
-        </div>
-
-        {stockEnabled && (
-          <div className="space-y-1 pl-6">
-            <Label htmlFor="stock">Quantidade em estoque</Label>
-            <Input
-              id="stock"
-              type="number"
-              min={0}
-              step={1}
-              {...register("stock")}
-              placeholder="0"
-              className="max-w-[160px]"
-            />
-            {errors.stock && (
-              <p className="text-xs text-destructive">{errors.stock.message as string}</p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              0 = sem estoque · 1–5 = "Últimas unidades" · acima de 5 = em estoque
-            </p>
-          </div>
-        )}
-
-        {!stockEnabled && (
-          <p className="text-xs text-muted-foreground pl-6">
-            Sem controle — o produto sempre aparecerá como disponível.
-          </p>
         )}
       </div>
 

@@ -1,10 +1,8 @@
 import Header from "@/components/Header";
-import QuickAccessIcons from "@/components/QuickAccessIcons";
 import HeroBanner from "@/components/HeroBanner";
-import BenefitsStrip from "@/components/BenefitsStrip";
+import QuickAccessIcons from "@/components/QuickAccessIcons";
 import ProductCarousel from "@/components/ProductCarousel";
 import CategoryHighlight from "@/components/CategoryHighlight";
-import HealthServices from "@/components/HealthServices";
 import SiteFooter from "@/components/SiteFooter";
 import { useActiveSections } from "@/hooks/useSections";
 import { Fragment } from "react";
@@ -15,16 +13,13 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <QuickAccessIcons />
       <HeroBanner />
-      <BenefitsStrip />
+      <QuickAccessIcons />
 
       {sections.map((section, index) => (
         <Fragment key={section.id}>
           <ProductCarousel title={section.name} />
-          {/* Componentes fixos intercalados em posições específicas */}
           {index === 1 && <CategoryHighlight />}
-          {index === 2 && <HealthServices />}
         </Fragment>
       ))}
 

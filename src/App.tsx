@@ -12,6 +12,7 @@ import CheckoutPage from "./pages/CheckoutPage";
 import AccountPage from "./pages/AccountPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
+import CollectionPage from "./pages/CollectionPage";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +31,7 @@ const App = () => (
           <Route path="/minha-conta" element={<AccountPage />} />
           <Route path="/entrar" element={<AuthPage />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/colecao/:slug" element={<CollectionPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

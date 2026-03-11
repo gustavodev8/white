@@ -46,7 +46,7 @@ async function mockPayment(payment: PaymentInfo): Promise<PaymentResult> {
       paymentId: id,
       status:    "pending",
       pixCode:   "00020101021226890014br.gov.bcb.pix0136" + id +
-                 "5204000053039865802BR5909RBFARMA6009SAOPAULO62070503***6304ABCD",
+                 "5204000053039865802BR5909WHITE.COM6009SAOPAULO62070503***6304ABCD",
     };
   }
   return {
