@@ -1,4 +1,6 @@
 import { X, Trash2, ShoppingBag, Plus, Minus } from "lucide-react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useCart, cartTotal } from "@/hooks/useCart";
 
@@ -14,34 +16,48 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
   const { items, increaseQty, decreaseQty, removeItem, clearCart } = useCart();
   const total = cartTotal(items);
 
-  return (
-    <div
-      className={`fixed inset-0 z-50 transition-all duration-300 ${
-        open ? "pointer-events-auto" : "pointer-events-none"
-      }`}
-    >
+  // mounted: mantém no DOM durante animação de saída
+  // shown: delay de 1 frame para acionar a transição de entrada
+  const [mounted, setMounted] = useState(false);
+  const [shown,   setShown]   = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      const t = setTimeout(() => setShown(true), 10);
+      return () => clearTimeout(t);
+    } else {
+      setShown(false);
+    }
+  }, [open]);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <>
       {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${
-          open ? "opacity-100" : "opacity-0"
+        className={`fixed inset-0 z-50 bg-black/50 transition-opacity duration-300 ${
+          shown ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
         onClick={onClose}
       />
 
       {/* Painel — desliza da direita */}
       <div
-        className={`absolute right-0 top-0 bottom-0 w-full max-w-sm bg-white flex flex-col shadow-2xl
-          transition-transform duration-300 ease-in-out will-change-transform ${
-          open ? "translate-x-0" : "translate-x-full"
+        className={`fixed right-0 top-0 bottom-0 z-[51] w-full max-w-sm bg-white flex flex-col shadow-2xl
+          transition-transform duration-300 ease-in-out ${
+          shown ? "translate-x-0" : "translate-x-full"
         }`}
+        onTransitionEnd={() => { if (!open) setMounted(false); }}
       >
         {/* Cabeçalho */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <ShoppingBag className="h-5 w-5 text-[#e8001c]" />
+            <ShoppingBag className="h-5 w-5 text-gray-800" />
             <span className="text-base font-bold text-gray-800">Meu Carrinho</span>
             {items.length > 0 && (
-              <span className="text-xs bg-[#e8001c] text-white px-2 py-0.5 rounded-full font-semibold">
+              <span className="text-xs bg-gray-900 text-white px-2 py-0.5 rounded-full font-bold">
                 {items.reduce((s, i) => s + i.cartQuantity, 0)}
               </span>
             )}
@@ -56,7 +72,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
 
         {/* Lista de itens */}
         {items.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400 px-6">
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6">
             <ShoppingBag className="h-14 w-14 text-gray-200" />
             <p className="text-base font-semibold text-gray-500">Seu carrinho está vazio</p>
             <p className="text-sm text-center text-gray-400">
@@ -64,7 +80,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
             </p>
             <button
               onClick={onClose}
-              className="mt-2 bg-[#e8001c] hover:bg-[#c4001a] text-white text-sm font-semibold px-6 py-2.5 rounded-full transition-colors"
+              className="mt-2 bg-gray-900 hover:bg-black text-white text-sm font-bold px-6 py-2.5 rounded-full transition-colors"
             >
               Continuar comprando
             </button>
@@ -72,7 +88,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
         ) : (
           <>
             {/* Itens */}
-            <ul className="flex-1 overflow-y-auto divide-y divide-gray-100 px-4 py-2">
+            <ul className="flex-1 min-h-0 overflow-y-auto divide-y divide-gray-100 px-4 py-2">
               {items.map((item) => (
                 <li key={item.cartKey} className="flex gap-3 py-4">
                   {/* Imagem */}
@@ -126,7 +142,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                   {/* Remover */}
                   <button
                     onClick={() => removeItem(item.cartKey)}
-                    className="self-start text-gray-300 hover:text-[#e8001c] transition-colors mt-0.5"
+                    className="self-start text-gray-300 hover:text-red-500 transition-colors mt-0.5"
                     title="Remover item"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -151,7 +167,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
               <Link
                 to="/carrinho"
                 onClick={onClose}
-                className="w-full bg-[#e8001c] hover:bg-[#c4001a] text-white font-bold py-3 rounded-full transition-colors text-sm flex items-center justify-center"
+                className="w-full bg-gray-900 hover:bg-black text-white font-bold py-3 rounded-full transition-colors text-sm flex items-center justify-center"
               >
                 Finalizar pedido
               </Link>
@@ -159,7 +175,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
               {/* Limpar carrinho */}
               <button
                 onClick={clearCart}
-                className="w-full text-xs text-gray-400 hover:text-[#e8001c] transition-colors py-1"
+                className="w-full text-xs text-gray-400 hover:text-gray-700 transition-colors py-1"
               >
                 Limpar carrinho
               </button>
@@ -167,6 +183,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
           </>
         )}
       </div>
-    </div>
+    </>,
+    document.body
   );
 }

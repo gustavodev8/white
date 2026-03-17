@@ -41,7 +41,7 @@ const ProductCard = ({ product }: ProductCardProps) => {
   return (
     <div
       onClick={handleCardClick}
-      className={`flex flex-col bg-background rounded-lg overflow-hidden cursor-pointer group ${
+      className={`flex flex-col bg-background rounded-lg overflow-hidden cursor-pointer group transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg ${
         outOfStock ? "opacity-60" : ""
       }`}
     >

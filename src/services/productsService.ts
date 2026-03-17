@@ -63,8 +63,9 @@ function dbRowToProduct(row: DbProduct): Product {
 export async function fetchProductsBySection(section: string): Promise<Product[]> {
   // cs. = contains — formato PostgreSQL array literal: {"section name"}
   const rows = await restGet<DbProduct>("products", {
-    sections: `cs.{"${section}"}`,
-    order:    "created_at.desc",
+    sections:  `cs.{"${section}"}`,
+    is_active: "eq.true",
+    order:     "created_at.desc",
   });
   return rows.map(dbRowToProduct);
 }
@@ -74,7 +75,7 @@ export async function fetchProductsBySection(section: string): Promise<Product[]
  */
 export async function fetchProductById(id: string): Promise<Product | null> {
   try {
-    const rows = await restGet<DbProduct>("products", { id: `eq.${id}` });
+    const rows = await restGet<DbProduct>("products", { id: `eq.${id}`, is_active: "eq.true" });
     return rows.length > 0 ? dbRowToProduct(rows[0]) : null;
   } catch {
     return null;
@@ -87,8 +88,9 @@ export async function fetchProductById(id: string): Promise<Product | null> {
  */
 export async function fetchProductsOnSale(minDiscount = 0): Promise<Product[]> {
   const rows = await restGet<DbProduct>("products", {
-    discount: `gt.${minDiscount}`,
-    order:    "discount.desc",
+    discount:  `gt.${minDiscount}`,
+    is_active: "eq.true",
+    order:     "discount.desc",
   });
   return rows.map(dbRowToProduct);
 }
@@ -99,8 +101,9 @@ export async function fetchProductsOnSale(minDiscount = 0): Promise<Product[]> {
 export async function fetchProductsByCategories(categories: string[]): Promise<Product[]> {
   // in. = IN filter — formato: {val1,val2,...}
   const rows = await restGet<DbProduct>("products", {
-    category: `in.(${categories.join(",")})`,
-    order:    "created_at.desc",
+    category:  `in.(${categories.join(",")})`,
+    is_active: "eq.true",
+    order:     "created_at.desc",
   });
   return rows.map(dbRowToProduct);
 }
@@ -110,8 +113,9 @@ export async function fetchProductsByCategories(categories: string[]): Promise<P
  */
 export async function fetchProductsByCategory(category: string): Promise<Product[]> {
   const rows = await restGet<DbProduct>("products", {
-    category: `eq.${category}`,
-    order:    "created_at.desc",
+    category:  `eq.${category}`,
+    is_active: "eq.true",
+    order:     "created_at.desc",
   });
   return rows.map(dbRowToProduct);
 }
@@ -124,9 +128,10 @@ export async function searchProductsInDb(query: string): Promise<Product[]> {
   // ilike com % como wildcard SQL; searchParams codifica % como %25 automaticamente
   const q = query.replace(/[%_]/g, "\\$&"); // escapa wildcards acidentais
   const rows = await restGet<DbProduct>("products", {
-    or:    `(name.ilike.%${q}%,brand.ilike.%${q}%)`,
-    order: "created_at.desc",
-    limit: "20",
+    or:        `(name.ilike.%${q}%,brand.ilike.%${q}%)`,
+    is_active: "eq.true",
+    order:     "created_at.desc",
+    limit:     "20",
   });
   return rows.map(dbRowToProduct);
 }

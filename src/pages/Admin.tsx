@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { STORE_NAME } from "@/config/storeConfig";
 import { supabase } from "@/services/supabaseClient";
@@ -17,6 +18,7 @@ import {
   fetchAllOrders, createOrder, updateOrderStatus, updateOrderTracking,
   STATUS_LABEL, STATUS_COLOR,
 } from "@/services/ordersService";
+import { refundPayment, checkPaymentStatus } from "@/services/paymentService";
 import { isLocalOrder } from "@/services/shippingService";
 import {
   fetchFluxoCombinado, createTransacao, deleteTransacao,
@@ -78,7 +80,7 @@ import {
   Ban, CreditCard, FileDown, Settings, SlidersHorizontal, MessageSquare,
   Smartphone, Building2, Landmark, CalendarCheck, Hash, PhoneCall,
   LockKeyhole, LockKeyholeOpen, Banknote, AlertTriangle,
-  KeyRound, ShieldCheck, ShieldOff, ShieldAlert, Eye, EyeOff,
+  KeyRound, ShieldCheck, ShieldOff, ShieldAlert, Eye, EyeOff, RotateCcw,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
@@ -295,7 +297,7 @@ function DashboardTab({ isActive }: { isActive: boolean }) {
   const pctPed = meta && meta.meta_pedidos     > 0 ? (monthOrders.length / meta.meta_pedidos) * 100 : 0;
 
   const barColor = (pct: number) =>
-    pct >= 100 ? "bg-green-500" : pct >= 70 ? "bg-primary" : pct >= 40 ? "bg-amber-500" : "bg-red-400";
+    pct >= 100 ? "bg-foreground" : pct >= 70 ? "bg-foreground/70" : pct >= 40 ? "bg-foreground/45" : "bg-foreground/25";
 
   const statusCounts: Record<Order["status"], number> = {
     pending: 0, processing: 0, shipped: 0, delivered: 0, cancelled: 0,
@@ -308,32 +310,32 @@ function DashboardTab({ isActive }: { isActive: boolean }) {
       value:    fmt(revenueMonth),
       sub:      `${monthOrders.length} pedido${monthOrders.length !== 1 ? "s" : ""} no mês`,
       icon:     TrendingUp,
-      color:    "text-green-600",
-      bg:       "bg-green-50",
+      color:    "text-foreground",
+      bg:       "bg-secondary",
     },
     {
       label:    "Total de pedidos",
       value:    String(orders.length),
       sub:      `${todayOrders.length} hoje`,
       icon:     ShoppingBag,
-      color:    "text-blue-600",
-      bg:       "bg-blue-50",
+      color:    "text-foreground",
+      bg:       "bg-secondary",
     },
     {
       label:    "Aguardando pagamento",
       value:    String(pending.length),
       sub:      pending.length > 0 ? "Requerem atenção" : "Nenhum pendente",
       icon:     AlertCircle,
-      color:    pending.length > 0 ? "text-amber-600" : "text-gray-400",
-      bg:       pending.length > 0 ? "bg-amber-50" : "bg-gray-50",
+      color:    "text-foreground",
+      bg:       "bg-secondary",
     },
     {
       label:    "Ticket médio",
       value:    fmt(avgTicket),
       sub:      `${active.length} pedido${active.length !== 1 ? "s" : ""} ativos`,
       icon:     BarChart2,
-      color:    "text-purple-600",
-      bg:       "bg-purple-50",
+      color:    "text-foreground",
+      bg:       "bg-secondary",
     },
   ];
 
@@ -433,7 +435,7 @@ function DashboardTab({ isActive }: { isActive: boolean }) {
           {meta && (
             <div className="bg-background rounded-xl border border-border overflow-hidden">
               <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-                <Target className="h-4 w-4 text-primary" />
+                <Target className="h-4 w-4 text-foreground" />
                 <h3 className="font-semibold text-sm">Meta do mês</h3>
                 <span className="ml-auto text-xs text-muted-foreground">
                   {new Date().toLocaleString("pt-BR", { month: "long", year: "numeric" })}
@@ -470,9 +472,9 @@ function DashboardTab({ isActive }: { isActive: boolean }) {
           {lowStock.length > 0 && (
             <div className="bg-background rounded-xl border border-border overflow-hidden">
               <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-                <Boxes className="h-4 w-4 text-amber-600" />
+                <Boxes className="h-4 w-4 text-muted-foreground" />
                 <h3 className="font-semibold text-sm">Estoque critico</h3>
-                <span className="ml-auto text-[11px] font-medium text-amber-600">
+                <span className="ml-auto text-[11px] font-medium text-muted-foreground">
                   {lowStock.filter(p => p.stock === 0).length > 0
                     ? `${lowStock.filter(p => p.stock === 0).length} esgotado(s)`
                     : `${lowStock.length} com estoque baixo`}
@@ -486,7 +488,7 @@ function DashboardTab({ isActive }: { isActive: boolean }) {
                       <p className="text-[11px] text-muted-foreground">{p.brand}</p>
                     </div>
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                      p.stock === 0 ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700"
+                      p.stock === 0 ? "bg-secondary text-muted-foreground" : "bg-secondary text-foreground"
                     }`}>
                       {p.stock === 0 ? "Esgotado" : `${p.stock} un.`}
                     </span>
@@ -501,7 +503,7 @@ function DashboardTab({ isActive }: { isActive: boolean }) {
       {/* ── Resumo financeiro do mês ──────────────────────────────── */}
       <div className="bg-background rounded-xl border border-border overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-          <Wallet className="h-4 w-4 text-primary" />
+          <Wallet className="h-4 w-4 text-foreground" />
           <h3 className="font-semibold text-sm">Resumo financeiro</h3>
           <span className="ml-auto text-xs text-muted-foreground">
             {new Date().toLocaleString("pt-BR", { month: "long", year: "numeric" })}
@@ -510,15 +512,15 @@ function DashboardTab({ isActive }: { isActive: boolean }) {
         <div className="p-5 grid grid-cols-3 gap-4">
           <div className="text-center">
             <p className="text-[11px] text-muted-foreground mb-1">Entradas</p>
-            <p className="text-lg font-bold text-green-600">{fmt(fluxoMes.entradas)}</p>
+            <p className="text-lg font-bold text-foreground">{fmt(fluxoMes.entradas)}</p>
           </div>
           <div className="text-center">
             <p className="text-[11px] text-muted-foreground mb-1">Saidas</p>
-            <p className="text-lg font-bold text-red-500">{fmt(fluxoMes.saidas)}</p>
+            <p className="text-lg font-bold text-muted-foreground">{fmt(fluxoMes.saidas)}</p>
           </div>
           <div className="text-center">
             <p className="text-[11px] text-muted-foreground mb-1">Saldo</p>
-            <p className={`text-lg font-bold ${fluxoMes.entradas - fluxoMes.saidas >= 0 ? "text-green-600" : "text-red-500"}`}>
+            <p className="text-lg font-bold text-foreground">
               {fmt(fluxoMes.entradas - fluxoMes.saidas)}
             </p>
           </div>
@@ -549,6 +551,9 @@ function AdminOrdersTab({ isActive, isAdmin = true }: { isActive: boolean; isAdm
   const [expandedId, setExpandedId]       = useState<string | null>(null);
   const [trackingEdits, setTrackingEdits] = useState<Record<string, string>>({});
   const [savingTracking, setSavingTracking] = useState<string | null>(null);
+  const [refundingId, setRefundingId]       = useState<string | null>(null);
+  const [refundConfirm, setRefundConfirm]   = useState<Order | null>(null);
+  const [checkingId, setCheckingId]         = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -590,6 +595,60 @@ function AdminOrdersTab({ isActive, isAdmin = true }: { isActive: boolean; isAdm
       toast.error(err instanceof Error ? err.message : "Erro ao salvar rastreio");
     } finally {
       setSavingTracking(null);
+    }
+  }
+
+  async function handleRefund(order: Order) {
+    if (!order.payment_code) return;
+    setRefundConfirm(null);
+    setRefundingId(order.id);
+    try {
+      const result = await refundPayment(order.payment_code);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      await updateOrderStatus(order.id, "cancelled");
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: "cancelled" } : o));
+      toast.success("Estorno realizado com sucesso.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao estornar pagamento.");
+    } finally {
+      setRefundingId(null);
+    }
+  }
+
+  // Mapeamento MP status → Order status
+  const MP_TO_ORDER: Record<string, Order["status"]> = {
+    approved:     "processing",
+    refunded:     "cancelled",
+    charged_back: "cancelled",
+    cancelled:    "cancelled",
+  };
+
+  async function handleCheckStatus(order: Order) {
+    if (!order.payment_code) return;
+    setCheckingId(order.id);
+    try {
+      const result = await checkPaymentStatus(order.payment_code);
+      if (result.error) { toast.error(result.error); return; }
+
+      const newStatus = MP_TO_ORDER[result.mpStatus ?? ""];
+      if (!newStatus) {
+        toast.info(`Status no Mercado Pago: "${result.mpStatus}" — nenhuma alteração necessária.`);
+        return;
+      }
+      if (order.status === newStatus) {
+        toast.info("Pedido já está com o status correto.");
+        return;
+      }
+      await updateOrderStatus(order.id, newStatus);
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: newStatus } : o));
+      toast.success(`Status atualizado para "${STATUS_LABEL[newStatus]}".`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao verificar pagamento.");
+    } finally {
+      setCheckingId(null);
     }
   }
 
@@ -638,8 +697,8 @@ function AdminOrdersTab({ isActive, isAdmin = true }: { isActive: boolean; isAdm
               onClick={() => setStatusFilter(opt.value as StatusFilter)}
               className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
                 statusFilter === opt.value
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background text-muted-foreground border-border hover:border-primary hover:text-primary"
+                  ? "bg-foreground text-background border-foreground"
+                  : "bg-background text-muted-foreground border-border hover:border-foreground hover:text-foreground"
               }`}
             >
               {opt.label}
@@ -746,7 +805,7 @@ function AdminOrdersTab({ isActive, isAdmin = true }: { isActive: boolean; isAdm
                                 onChange={e => setTrackingEdits(prev => ({ ...prev, [order.id]: e.target.value }))}
                                 onKeyDown={e => e.key === "Enter" && handleSaveTracking(order.id)}
                                 placeholder="Ex: BR123456789BR, JD014600152BR..."
-                                className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-secondary focus:outline-none focus:border-primary font-mono"
+                                className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-secondary focus:outline-none focus:border-foreground font-mono"
                               />
                               <Button
                                 size="sm"
@@ -765,7 +824,7 @@ function AdminOrdersTab({ isActive, isAdmin = true }: { isActive: boolean; isAdm
                                   href={`https://rastreamento.correios.com.br/app/resultado.app?objetos=${order.tracking_code}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-xs text-primary font-medium hover:underline flex items-center gap-1"
+                                  className="text-xs text-foreground font-medium hover:underline flex items-center gap-1"
                                 >
                                   <LinkIcon className="h-3 w-3" />
                                   Abrir rastreamento
@@ -834,11 +893,7 @@ function AdminOrdersTab({ isActive, isAdmin = true }: { isActive: boolean; isAdm
                                 <DollarSign className="h-3.5 w-3.5" /> Resumo financeiro
                               </p>
                               {/* Forma de pagamento em destaque */}
-                              <div className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full ${
-                                order.payment_method === "pix"    ? "bg-green-100 text-green-700" :
-                                order.payment_method === "boleto" ? "bg-orange-100 text-orange-700" :
-                                "bg-blue-100 text-blue-700"
-                              }`}>
+                              <div className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-secondary text-foreground">
                                 {order.payment_method === "pix"    ? <Smartphone className="h-3 w-3" /> :
                                  order.payment_method === "boleto" ? <FileDown className="h-3 w-3" /> :
                                  <CreditCard className="h-3 w-3" />}
@@ -858,11 +913,11 @@ function AdminOrdersTab({ isActive, isAdmin = true }: { isActive: boolean; isAdm
                                   <span>{fmt(Number(order.subtotal))}</span>
                                 </div>
                                 {Number(order.discount) > 0 && (
-                                  <div className="flex justify-between text-xs text-green-600">
+                                  <div className="flex justify-between text-xs text-foreground">
                                     <span>
                                       Desconto
                                       {order.cupom_codigo && (
-                                        <span className="ml-1.5 bg-green-100 text-green-700 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">
+                                        <span className="ml-1.5 bg-secondary text-foreground text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">
                                           {order.cupom_codigo}
                                         </span>
                                       )}
@@ -876,7 +931,7 @@ function AdminOrdersTab({ isActive, isAdmin = true }: { isActive: boolean; isAdm
                                     <span>{fmt(Number(order.shipping_cost))}</span>
                                   </div>
                                 ) : (
-                                  <div className="flex justify-between text-xs text-green-600">
+                                  <div className="flex justify-between text-xs text-muted-foreground">
                                     <span>Frete</span>
                                     <span>Grátis</span>
                                   </div>
@@ -917,7 +972,7 @@ function AdminOrdersTab({ isActive, isAdmin = true }: { isActive: boolean; isAdm
                                 {order.cupom_codigo && !Number(order.discount) && (
                                   <div className="flex items-center gap-2 text-xs">
                                     <span className="text-muted-foreground w-16 shrink-0">Cupom</span>
-                                    <span className="bg-green-100 text-green-700 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">{order.cupom_codigo}</span>
+                                    <span className="bg-secondary text-foreground text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">{order.cupom_codigo}</span>
                                   </div>
                                 )}
                                 {(order as Order & { observacoes?: string | null }).observacoes && (
@@ -926,6 +981,37 @@ function AdminOrdersTab({ isActive, isAdmin = true }: { isActive: boolean; isAdm
                                     <span className="text-foreground italic leading-relaxed">
                                       {(order as Order & { observacoes?: string | null }).observacoes}
                                     </span>
+                                  </div>
+                                )}
+                                {/* Botões de pagamento MP */}
+                                {order.payment_code && (
+                                  <div className="pt-3 border-t border-border mt-2 flex flex-col gap-2">
+                                    {/* Verificar status */}
+                                    {order.status === "pending" && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-1.5 w-full"
+                                        disabled={checkingId === order.id}
+                                        onClick={() => handleCheckStatus(order)}
+                                      >
+                                        <RefreshCw className={`h-3.5 w-3.5 ${checkingId === order.id ? "animate-spin" : ""}`} />
+                                        {checkingId === order.id ? "Verificando..." : "Verificar pagamento"}
+                                      </Button>
+                                    )}
+                                    {/* Estornar */}
+                                    {order.status !== "cancelled" && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-1.5 text-destructive border-destructive/40 hover:bg-destructive/10 w-full"
+                                        disabled={refundingId === order.id}
+                                        onClick={() => setRefundConfirm(order)}
+                                      >
+                                        <RotateCcw className="h-3.5 w-3.5" />
+                                        {refundingId === order.id ? "Estornando..." : "Estornar pagamento"}
+                                      </Button>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -941,6 +1027,27 @@ function AdminOrdersTab({ isActive, isAdmin = true }: { isActive: boolean; isAdm
           </Table>
         )}
       </div>
+
+      {/* ── Dialog de confirmação de estorno ── */}
+      <AlertDialog open={!!refundConfirm} onOpenChange={open => { if (!open) setRefundConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar estorno</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso irá estornar <strong>R$ {Number(refundConfirm?.total ?? 0).toFixed(2).replace(".", ",")}</strong> do pedido <strong>{refundConfirm?.order_number}</strong> diretamente via Mercado Pago e cancelar o pedido. Essa ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => refundConfirm && handleRefund(refundConfirm)}
+            >
+              Sim, estornar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -955,6 +1062,10 @@ function ProductsTab({ isActive }: { isActive: boolean }) {
   const [dialogOpen, setDialogOpen]         = useState(false);
   const [editingProduct, setEditingProduct] = useState<AdminProduct | undefined>();
   const [deleteTarget, setDeleteTarget]     = useState<AdminProduct | undefined>();
+  const [filterOpen,      setFilterOpen]      = useState(false);
+  const [filterStatus,    setFilterStatus]    = useState<"todos" | "ativo" | "inativo">("todos");
+  const [filterEstoque,   setFilterEstoque]   = useState<"todos" | "com" | "sem" | "baixo">("todos");
+  const [filterCategoria, setFilterCategoria] = useState("");
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
@@ -993,18 +1104,43 @@ function ProductsTab({ isActive }: { isActive: boolean }) {
     finally { setDeleteTarget(undefined); }
   }
 
-  const filtered = search.trim()
-    ? products.filter(p =>
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.brand.toLowerCase().includes(search.toLowerCase()) ||
-        p.category.toLowerCase().includes(search.toLowerCase())
-      )
-    : products;
+  const categorias = useMemo(
+    () => [...new Set(products.map(p => p.category))].sort(),
+    [products],
+  );
+
+  const activeFilters =
+    (filterStatus    !== "todos" ? 1 : 0) +
+    (filterEstoque   !== "todos" ? 1 : 0) +
+    (filterCategoria              ? 1 : 0);
+
+  const filtered = products.filter(p => {
+    if (search.trim() && !(
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.brand.toLowerCase().includes(search.toLowerCase()) ||
+      p.category.toLowerCase().includes(search.toLowerCase())
+    )) return false;
+    if (filterStatus === "ativo"   && !p.isActive) return false;
+    if (filterStatus === "inativo" &&  p.isActive) return false;
+    if (filterEstoque === "com"   && !(p.stock === null || p.stock > 0))                     return false;
+    if (filterEstoque === "sem"   && !(p.stock !== null && p.stock === 0))                   return false;
+    if (filterEstoque === "baixo" && !(p.stock !== null && p.stock > 0 && p.stock <= 5))     return false;
+    if (filterCategoria && p.category !== filterCategoria) return false;
+    return true;
+  });
+
+  const chipCls = (active: boolean) =>
+    `px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+      active
+        ? "bg-foreground text-background border-foreground"
+        : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+    }`;
 
   return (
     <>
-      <div className="flex items-center gap-3 mb-4">
-        <div className="relative flex-1 max-w-sm">
+      {/* ── Toolbar ─────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar produto, marca..." className="pl-9" />
           {search && (
@@ -1013,28 +1149,109 @@ function ProductsTab({ isActive }: { isActive: boolean }) {
             </button>
           )}
         </div>
-        <p className="text-sm text-muted-foreground whitespace-nowrap">
+
+        {/* Botão filtros */}
+        <button
+          onClick={() => setFilterOpen(o => !o)}
+          className={`flex items-center gap-1.5 px-3 h-10 rounded-lg border text-sm font-medium transition-colors shrink-0 ${
+            filterOpen || activeFilters > 0
+              ? "border-foreground/40 text-foreground bg-secondary"
+              : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+          }`}>
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Filtros</span>
+          {activeFilters > 0 && (
+            <span className="flex items-center justify-center w-4 h-4 rounded-full bg-foreground text-background text-[10px] font-bold leading-none">
+              {activeFilters}
+            </span>
+          )}
+        </button>
+
+        <p className="text-sm text-muted-foreground whitespace-nowrap hidden sm:block">
           {filtered.length} produto{filtered.length !== 1 ? "s" : ""}
         </p>
-        <Button onClick={() => { setEditingProduct(undefined); setDialogOpen(true); }} className="gap-1.5 ml-auto">
-          <Plus className="h-4 w-4" /> Novo produto
+        <Button onClick={() => { setEditingProduct(undefined); setDialogOpen(true); }} className="gap-1.5 shrink-0">
+          <Plus className="h-4 w-4" />
+          <span className="hidden sm:inline">Novo produto</span>
         </Button>
       </div>
 
+      {/* ── Painel de filtros ───────────────────────────────────── */}
+      {filterOpen && (
+        <div className="mb-4 border border-border rounded-xl p-4 space-y-4 bg-background">
+
+          {/* Status */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Status</p>
+            <div className="flex gap-2">
+              {(["todos", "ativo", "inativo"] as const).map(v => (
+                <button key={v} onClick={() => setFilterStatus(v)} className={chipCls(filterStatus === v)}>
+                  {v === "todos" ? "Todos" : v === "ativo" ? "Ativos" : "Inativos"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Estoque */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Estoque</p>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { id: "todos", label: "Todos"         },
+                { id: "com",   label: "Com estoque"   },
+                { id: "sem",   label: "Sem estoque"   },
+                { id: "baixo", label: "Estoque baixo" },
+              ] as const).map(({ id, label }) => (
+                <button key={id} onClick={() => setFilterEstoque(id)} className={chipCls(filterEstoque === id)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Categoria */}
+          {categorias.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Categoria</p>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => setFilterCategoria("")} className={chipCls(!filterCategoria)}>
+                  Todas
+                </button>
+                {categorias.map(cat => (
+                  <button key={cat} onClick={() => setFilterCategoria(cat)} className={chipCls(filterCategoria === cat)}>
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Limpar */}
+          {activeFilters > 0 && (
+            <button
+              onClick={() => { setFilterStatus("todos"); setFilterEstoque("todos"); setFilterCategoria(""); }}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline">
+              Limpar filtros
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="bg-background rounded-xl border border-border overflow-hidden">
         {loading ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {["Foto","Nome","Categoria","Seções","Preço","Estoque","Ativo","Ações"].map(h => (
-                  <TableHead key={h}>{h}</TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} cols={8} />)}
-            </TableBody>
-          </Table>
+          /* ── skeleton ─ */
+          <div className="divide-y divide-border">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
+                <div className="w-11 h-11 rounded-lg bg-muted shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 bg-muted rounded w-2/3" />
+                  <div className="h-2.5 bg-muted rounded w-1/3" />
+                </div>
+                <div className="h-3 bg-muted rounded w-16 shrink-0" />
+              </div>
+            ))}
+          </div>
         ) : loadError ? (
           <div className="p-12 text-center space-y-3">
             <p className="text-destructive font-medium">{loadError}</p>
@@ -1042,93 +1259,131 @@ function ProductsTab({ isActive }: { isActive: boolean }) {
           </div>
         ) : products.length === 0 ? (
           <div className="p-12 text-center text-muted-foreground">
-            Nenhum produto. <button onClick={() => setDialogOpen(true)} className="text-primary underline">Criar agora</button>
+            Nenhum produto. <button onClick={() => setDialogOpen(true)} className="text-foreground underline">Criar agora</button>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">
+            Nenhum resultado para &quot;{search}&quot;
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-16">Foto</TableHead>
-                <TableHead>Nome</TableHead>
-                <TableHead className="hidden md:table-cell">Categoria</TableHead>
-                <TableHead className="hidden lg:table-cell">Seções</TableHead>
-                <TableHead>Preço</TableHead>
-                <TableHead className="hidden sm:table-cell">Estoque</TableHead>
-                <TableHead>Ativo</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                    Nenhum produto encontrado para &quot;{search}&quot;
-                  </TableCell>
-                </TableRow>
-              ) : filtered.map(p => (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    <img src={p.image || "/placeholder.svg"} alt={p.name}
-                      className="w-12 h-12 object-contain rounded-lg bg-secondary"
-                      onError={e => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }} />
-                  </TableCell>
-                  <TableCell>
-                    <p className="font-medium">{p.name}</p>
-                    <p className="text-xs text-muted-foreground">{p.brand} · {p.quantity}</p>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <Badge variant="outline" className="capitalize text-xs">{p.category}</Badge>
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    <div className="flex flex-wrap gap-1">
-                      {p.sections.length === 0
-                        ? <span className="text-xs text-muted-foreground">—</span>
-                        : p.sections.map(s => <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>)}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <p className="font-semibold">{fmt(p.price)}</p>
-                    {p.discount > 0 && <p className="text-xs text-green-600">-{p.discount}%</p>}
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    {p.stock === null ? (
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Package className="h-3.5 w-3.5" /> Livre
-                      </span>
-                    ) : p.stock === 0 ? (
-                      <Badge variant="destructive" className="text-xs">Sem estoque</Badge>
-                    ) : p.stock <= 5 ? (
-                      <Badge variant="outline" className="text-xs text-amber-600 border-amber-400">
-                        {p.stock} restante{p.stock !== 1 ? "s" : ""}
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs text-green-600 border-green-400">
-                        {p.stock} un.
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Switch checked={p.isActive} onCheckedChange={() => handleToggleActive(p)} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => { setEditingProduct(p); setDialogOpen(true); }}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(p)} className="text-destructive hover:text-destructive">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
+          <>
+            {/* ── MOBILE: lista de cards ──────────────────────────── */}
+            <ul className="sm:hidden divide-y divide-border">
+              {filtered.map(p => (
+                <li key={p.id} className="flex items-center gap-3 px-3 py-3">
+                  {/* thumb */}
+                  <img
+                    src={p.image || "/placeholder.svg"}
+                    alt={p.name}
+                    className="w-11 h-11 rounded-lg object-cover bg-secondary shrink-0"
+                    onError={e => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
+                  />
+                  {/* info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate leading-tight">{p.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{p.brand}</p>
+                  </div>
+                  {/* preço */}
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-semibold">{fmt(p.price)}</p>
+                    {p.discount > 0 && <p className="text-[10px] text-muted-foreground font-medium">-{p.discount}%</p>}
+                  </div>
+                  {/* toggle */}
+                  <Switch checked={p.isActive} onCheckedChange={() => handleToggleActive(p)} className="shrink-0" />
+                  {/* ações */}
+                  <div className="flex shrink-0">
+                    <button onClick={() => { setEditingProduct(p); setDialogOpen(true); }}
+                      className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => setDeleteTarget(p)}
+                      className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </li>
               ))}
-            </TableBody>
-          </Table>
+            </ul>
+
+            {/* ── DESKTOP: tabela ─────────────────────────────────── */}
+            <div className="hidden sm:block overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-16">Foto</TableHead>
+                    <TableHead>Nome</TableHead>
+                    <TableHead className="hidden md:table-cell">Categoria</TableHead>
+                    <TableHead className="hidden lg:table-cell">Seções</TableHead>
+                    <TableHead>Preço</TableHead>
+                    <TableHead className="hidden md:table-cell">Estoque</TableHead>
+                    <TableHead>Ativo</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map(p => (
+                    <TableRow key={p.id}>
+                      <TableCell>
+                        <img src={p.image || "/placeholder.svg"} alt={p.name}
+                          className="w-11 h-11 object-cover rounded-lg bg-secondary"
+                          onError={e => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }} />
+                      </TableCell>
+                      <TableCell className="max-w-[180px]">
+                        <p className="font-medium truncate">{p.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{p.brand} · {p.quantity}</p>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <Badge variant="outline" className="capitalize text-xs">{p.category}</Badge>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell max-w-[140px]">
+                        <div className="flex flex-wrap gap-1">
+                          {p.sections.length === 0
+                            ? <span className="text-xs text-muted-foreground">—</span>
+                            : p.sections.slice(0, 2).map(s => <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>)}
+                          {p.sections.length > 2 && <Badge variant="secondary" className="text-xs">+{p.sections.length - 2}</Badge>}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <p className="font-semibold whitespace-nowrap">{fmt(p.price)}</p>
+                        {p.discount > 0 && <p className="text-xs text-muted-foreground">-{p.discount}%</p>}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {p.stock === null ? (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Package className="h-3.5 w-3.5" /> Livre
+                          </span>
+                        ) : p.stock === 0 ? (
+                          <Badge variant="outline" className="text-xs text-muted-foreground border-border">Sem estoque</Badge>
+                        ) : p.stock <= 5 ? (
+                          <Badge variant="outline" className="text-xs text-foreground border-border">{p.stock} rest.</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-foreground border-border">{p.stock} un.</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Switch checked={p.isActive} onCheckedChange={() => handleToggleActive(p)} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => { setEditingProduct(p); setDialogOpen(true); }}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(p)} className="text-muted-foreground hover:text-foreground">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingProduct ? "Editar produto" : "Novo produto"}</DialogTitle>
           </DialogHeader>
@@ -1150,7 +1405,7 @@ function ProductsTab({ isActive }: { isActive: boolean }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} className="bg-foreground text-background hover:bg-foreground/90">Excluir</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1298,90 +1553,88 @@ function SectionsTab({ isActive }: { isActive: boolean }) {
 
   return (
     <>
-      <div className="flex gap-2 mb-6">
+      {/* ── Criar nova seção ─────────────────────────────────── */}
+      <div className="flex gap-2 mb-4">
         <Input
           value={newName}
           onChange={e => setNewName(e.target.value)}
           placeholder="Nome da nova seção..."
           onKeyDown={e => e.key === "Enter" && handleAdd()}
-          className="max-w-sm"
+          className="flex-1"
         />
-        <Button onClick={handleAdd} disabled={adding || !newName.trim()} className="gap-1.5">
-          <Plus className="h-4 w-4" /> {adding ? "Criando..." : "Criar seção"}
+        <Button onClick={handleAdd} disabled={adding || !newName.trim()} className="gap-1.5 shrink-0">
+          <Plus className="h-4 w-4" />
+          <span className="hidden sm:inline">{adding ? "Criando..." : "Criar seção"}</span>
         </Button>
       </div>
 
       {loading ? (
-        <div className="bg-background rounded-xl border border-border overflow-hidden">
-          <Table><TableBody>{Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} cols={4} />)}</TableBody></Table>
+        <div className="bg-background rounded-xl border border-border overflow-hidden divide-y divide-border">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
+              <div className="h-3 bg-muted rounded w-1/2" />
+              <div className="ml-auto h-5 w-10 bg-muted rounded-full" />
+            </div>
+          ))}
         </div>
       ) : sections.length === 0 ? (
         <div className="p-8 text-center text-muted-foreground">Nenhuma seção cadastrada.</div>
       ) : (
         <div className="bg-background rounded-xl border border-border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-20">Ordem</TableHead>
-                <TableHead>Nome da seção</TableHead>
-                <TableHead className="w-28">Visível</TableHead>
-                <TableHead className="text-right w-28">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sections.map((section, index) => (
-                <TableRow key={section.id}>
-                  <TableCell>
-                    <div className="flex flex-col gap-0.5">
-                      <button onClick={() => move(index, "up")} disabled={index === 0}
-                        className="p-0.5 rounded hover:bg-secondary disabled:opacity-30 transition-colors">
-                        <ChevronUp className="h-4 w-4" />
-                      </button>
-                      <button onClick={() => move(index, "down")} disabled={index === sections.length - 1}
-                        className="p-0.5 rounded hover:bg-secondary disabled:opacity-30 transition-colors">
-                        <ChevronDown className="h-4 w-4" />
-                      </button>
+          <ul className="divide-y divide-border">
+            {sections.map((section, index) => (
+              <li key={section.id} className="flex items-center gap-2 px-3 py-3">
+                {/* reorder */}
+                <div className="flex flex-col shrink-0">
+                  <button onClick={() => move(index, "up")} disabled={index === 0}
+                    className="p-0.5 rounded hover:bg-secondary disabled:opacity-25 transition-colors">
+                    <ChevronUp className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => move(index, "down")} disabled={index === sections.length - 1}
+                    className="p-0.5 rounded hover:bg-secondary disabled:opacity-25 transition-colors">
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* nome / edição */}
+                <div className="flex-1 min-w-0">
+                  {editingId === section.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <Input value={editingName} onChange={e => setEditingName(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") handleRename(section.id); if (e.key === "Escape") setEditingId(null); }}
+                        autoFocus className="h-8 text-sm flex-1 min-w-0" />
+                      <Button size="sm" onClick={() => handleRename(section.id)} className="shrink-0">Salvar</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} className="shrink-0">✕</Button>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    {editingId === section.id ? (
-                      <div className="flex items-center gap-2">
-                        <Input value={editingName} onChange={e => setEditingName(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter") handleRename(section.id); if (e.key === "Escape") setEditingId(null); }}
-                          autoFocus className="h-8 max-w-xs" />
-                        <Button size="sm" onClick={() => handleRename(section.id)}>Salvar</Button>
-                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>✕</Button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{section.name}</span>
-                        {!section.isActive && <Badge variant="secondary" className="text-xs">inativa</Badge>}
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Switch checked={section.isActive} onCheckedChange={() => handleToggle(section)} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => openPicker(section)}
-                        title="Gerenciar produtos da seção">
-                        <LayoutList className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon"
-                        onClick={() => { setEditingId(section.id); setEditingName(section.name); }}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(section)}
-                        className="text-destructive hover:text-destructive">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                  ) : (
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-medium text-sm truncate">{section.name}</span>
+                      {!section.isActive && <Badge variant="secondary" className="text-xs shrink-0">inativa</Badge>}
                     </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  )}
+                </div>
+
+                {/* toggle */}
+                <Switch checked={section.isActive} onCheckedChange={() => handleToggle(section)} className="shrink-0" />
+
+                {/* ações */}
+                <div className="flex shrink-0">
+                  <button onClick={() => openPicker(section)} title="Produtos da seção"
+                    className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                    <LayoutList className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => { setEditingId(section.id); setEditingName(section.name); }}
+                    className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => setDeleteTarget(section)}
+                    className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -1395,7 +1648,7 @@ function SectionsTab({ isActive }: { isActive: boolean }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} className="bg-foreground text-background hover:bg-foreground/90">Excluir</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1459,7 +1712,7 @@ function SectionsTab({ isActive }: { isActive: boolean }) {
                         relative rounded-xl overflow-hidden border-2 cursor-pointer
                         transition-all duration-150 select-none
                         ${checked
-                          ? "border-primary shadow-md shadow-primary/10"
+                          ? "border-foreground shadow-md shadow-primary/10"
                           : "border-border hover:border-muted-foreground/50 hover:shadow-sm"}
                       `}
                     >
@@ -1468,7 +1721,7 @@ function SectionsTab({ isActive }: { isActive: boolean }) {
                         absolute top-2 right-2 z-10 h-6 w-6 rounded-full flex items-center justify-center
                         transition-all duration-150 border-2
                         ${checked
-                          ? "bg-primary border-primary text-primary-foreground scale-100"
+                          ? "bg-foreground border-foreground text-background scale-100"
                           : "bg-background/80 border-border text-transparent scale-90"}
                       `}>
                         <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1487,7 +1740,7 @@ function SectionsTab({ isActive }: { isActive: boolean }) {
                       </div>
 
                       {/* Product info */}
-                      <div className={`px-2.5 py-2.5 transition-colors ${checked ? "bg-primary/5" : "bg-background"}`}>
+                      <div className={`px-2.5 py-2.5 transition-colors ${checked ? "bg-foreground/5" : "bg-background"}`}>
                         <p className="text-xs font-semibold leading-snug line-clamp-2 mb-0.5">{p.name}</p>
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wide truncate">{p.brand}</p>
                       </div>
@@ -1621,8 +1874,8 @@ function BannersTab({ isActive }: { isActive: boolean }) {
         </p>
         <label className={`inline-flex items-center gap-2 cursor-pointer px-5 py-2.5 rounded-lg border-2 border-dashed transition-colors select-none ${
           uploading
-            ? "border-primary/40 bg-primary/5 pointer-events-none text-muted-foreground"
-            : "border-border hover:border-primary hover:bg-primary/5 text-foreground"
+            ? "border-foreground/40 bg-foreground/5 pointer-events-none text-muted-foreground"
+            : "border-border hover:border-foreground hover:bg-foreground/5 text-foreground"
         }`}>
           <ImageIcon className="h-5 w-5 shrink-0" />
           <span className="text-sm font-medium">{uploading ? "Enviando..." : "Selecionar imagem"}</span>
@@ -1686,7 +1939,7 @@ function BannersTab({ isActive }: { isActive: boolean }) {
                   <Download className="h-4 w-4" />
                 </Button>
                 <Button variant="ghost" size="icon" title="Excluir" onClick={() => setDeleteTarget(banner)}
-                  className="text-destructive hover:text-destructive">
+                  className="text-muted-foreground hover:text-foreground">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -1705,7 +1958,7 @@ function BannersTab({ isActive }: { isActive: boolean }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} className="bg-foreground text-background hover:bg-foreground/90">Excluir</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1844,6 +2097,21 @@ function PDVTab({ isActive }: { isActive: boolean }) {
   async function handleSale() {
     if (cart.length === 0) { toast.error("Adicione pelo menos um produto."); return; }
     if (!custName.trim()) { toast.error("Informe o nome do cliente."); return; }
+
+    // Segurança PDV: valor recebido não pode ser menor que o total
+    if (payMethod === "dinheiro") {
+      const recebido = Number(valorRecebido);
+      if (!valorRecebido || isNaN(recebido)) {
+        toast.error("Informe o valor recebido do cliente.");
+        return;
+      }
+      if (recebido < total) {
+        const falta = (total - recebido).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        toast.error(`Valor insuficiente — faltam ${falta} para cobrir o total.`);
+        return;
+      }
+    }
+
     setSubmitting(true);
     setSuccessNum(null);
     setLastReceipt(null);
@@ -1946,22 +2214,22 @@ function PDVTab({ isActive }: { isActive: boolean }) {
                   className={`relative bg-background border rounded-xl p-3 text-left transition-colors group ${
                     esgotado
                       ? "border-border opacity-50 cursor-not-allowed"
-                      : "border-border hover:border-primary"
+                      : "border-border hover:border-foreground"
                   }`}>
                   {esgotado && (
-                    <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Esgotado</span>
+                    <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full">Esgotado</span>
                   )}
                   {baixo && (
-                    <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Ult. {p.stock}</span>
+                    <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-secondary text-foreground px-1.5 py-0.5 rounded-full">Ult. {p.stock}</span>
                   )}
                   {hasSizes && !esgotado && (
-                    <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">Tamanhos</span>
+                    <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-secondary text-foreground px-1.5 py-0.5 rounded-full">Tamanhos</span>
                   )}
                   <img src={p.image || "/placeholder.svg"} alt={p.name}
                     className="w-full h-16 object-cover mb-2 rounded-lg bg-secondary"
                     onError={e => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }} />
-                  <p className="text-xs font-semibold line-clamp-2 group-hover:text-primary leading-snug">{p.name}</p>
-                  <p className="text-xs text-primary font-bold mt-1">{fmt(p.price)}</p>
+                  <p className="text-xs font-semibold line-clamp-2 group-hover:text-foreground leading-snug">{p.name}</p>
+                  <p className="text-xs text-foreground font-bold mt-1">{fmt(p.price)}</p>
                 </button>
               );
             })}
@@ -1986,7 +2254,7 @@ function PDVTab({ isActive }: { isActive: boolean }) {
             </h3>
             {cart.length > 0 && (
               <button onClick={() => setCart([])}
-                className="text-xs text-muted-foreground hover:text-destructive transition-colors">
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Limpar
               </button>
             )}
@@ -2011,7 +2279,7 @@ function PDVTab({ isActive }: { isActive: boolean }) {
                           </span>
                         )}
                         {item.product.stock !== null && !item.selectedSize && (
-                          <span className={`${item.qty >= lim ? "text-amber-600 font-medium" : ""}`}>
+                          <span className={`${item.qty >= lim ? "text-muted-foreground font-medium" : ""}`}>
                             (est. {lim})
                           </span>
                         )}
@@ -2030,7 +2298,7 @@ function PDVTab({ isActive }: { isActive: boolean }) {
                     </div>
                     <p className="text-xs font-bold shrink-0 w-14 text-right">{fmt(item.product.price * item.qty)}</p>
                     <button onClick={() => setCart(prev => prev.filter(i => i.cartKey !== item.cartKey))}
-                      className="text-muted-foreground hover:text-destructive transition-colors">
+                      className="text-muted-foreground hover:text-foreground transition-colors">
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -2104,8 +2372,8 @@ function PDVTab({ isActive }: { isActive: boolean }) {
                 <button key={m} onClick={() => setPayMethod(m)}
                   className={`text-xs font-semibold py-2 rounded-lg border-2 transition-colors ${
                     payMethod === m
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border hover:border-primary/50 text-muted-foreground"
+                      ? "border-foreground bg-foreground/10 text-foreground"
+                      : "border-border hover:border-foreground/50 text-muted-foreground"
                   }`}>
                   {labels[m]}
                 </button>
@@ -2139,15 +2407,15 @@ function PDVTab({ isActive }: { isActive: boolean }) {
                     onClick={() => setParcelas(p.parcelas)}
                     className={`text-left text-[11px] px-2.5 py-2 rounded-lg border-2 transition-colors leading-tight ${
                       parcelas === p.parcelas
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border hover:border-primary/40 text-muted-foreground"
+                        ? "border-foreground bg-foreground/10 text-foreground"
+                        : "border-border hover:border-foreground/40 text-muted-foreground"
                     }`}
                   >
                     <span className="font-bold">{p.parcelas}x</span>{" "}
                     {fmt(p.valorParcela)}
                     {p.temJuros
-                      ? <span className="text-amber-600 ml-1">(+juros)</span>
-                      : <span className="text-green-600 ml-1">s/ juros</span>}
+                      ? <span className="text-muted-foreground ml-1">(+juros)</span>
+                      : <span className="text-foreground ml-1">s/ juros</span>}
                   </button>
                 ))}
               </div>
@@ -2169,12 +2437,12 @@ function PDVTab({ isActive }: { isActive: boolean }) {
               <span>Subtotal</span><span>{fmt(subtotal)}</span>
             </div>
             {discountNum > 0 && (
-              <div className="flex justify-between text-green-600">
+              <div className="flex justify-between text-foreground">
                 <span>Desconto ({discountNum}%)</span><span>-{fmt(discount)}</span>
               </div>
             )}
             {payMethod === "cartao" && parcelaSel?.temJuros && (
-              <div className="flex justify-between text-amber-600 text-xs">
+              <div className="flex justify-between text-muted-foreground text-xs">
                 <span>Taxa cartão ({parcelas}x)</span>
                 <span>+{fmt(parcelaSel.totalFinal - total)}</span>
               </div>
@@ -2191,7 +2459,7 @@ function PDVTab({ isActive }: { isActive: boolean }) {
             )}
             {payMethod === "dinheiro" && Number(valorRecebido) > 0 && (
               <div className={`flex justify-between font-semibold pt-1 ${
-                Number(valorRecebido) >= total ? "text-green-600" : "text-red-500"
+                Number(valorRecebido) >= total ? "text-foreground" : "text-muted-foreground"
               }`}>
                 <span>Troco</span><span>{fmt(troco)}</span>
               </div>
@@ -2199,8 +2467,8 @@ function PDVTab({ isActive }: { isActive: boolean }) {
           </div>
 
           {successNum && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
-              <div className="flex items-center gap-2 text-sm text-green-700">
+            <div className="bg-secondary border border-border rounded-lg p-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm text-foreground">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
                 Venda <strong>{successNum}</strong> registrada com sucesso!
               </div>
@@ -2243,8 +2511,8 @@ function PDVTab({ isActive }: { isActive: boolean }) {
                         oos
                           ? "border-gray-200 text-gray-300 cursor-not-allowed line-through"
                           : pickedSize === s
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border hover:border-primary"
+                            ? "border-foreground bg-foreground text-background"
+                            : "border-border hover:border-foreground"
                       }`}
                     >
                       {s}
@@ -2369,12 +2637,12 @@ function FluxoCaixaTab({ isActive }: { isActive: boolean }) {
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => { setTipo("entrada"); setCategoria(""); }}
                 className={`flex items-center justify-center gap-2 py-2.5 rounded-lg border text-sm font-semibold transition-colors
-                  ${tipo === "entrada" ? "bg-green-500 text-white border-green-500" : "border-border hover:bg-secondary"}`}>
+                  ${tipo === "entrada" ? "bg-foreground text-background border-foreground" : "border-border hover:bg-secondary"}`}>
                 <ArrowUpCircle className="h-4 w-4" /> Entrada
               </button>
               <button onClick={() => { setTipo("saida"); setCategoria(""); }}
                 className={`flex items-center justify-center gap-2 py-2.5 rounded-lg border text-sm font-semibold transition-colors
-                  ${tipo === "saida" ? "bg-red-500 text-white border-red-500" : "border-border hover:bg-secondary"}`}>
+                  ${tipo === "saida" ? "bg-foreground text-background border-foreground" : "border-border hover:bg-secondary"}`}>
                 <ArrowDownCircle className="h-4 w-4" /> Saída
               </button>
             </div>
@@ -2435,7 +2703,7 @@ function FluxoCaixaTab({ isActive }: { isActive: boolean }) {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              className="bg-foreground text-background hover:bg-foreground/90">
               {deleting ? "Removendo..." : "Remover"}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -2445,41 +2713,41 @@ function FluxoCaixaTab({ isActive }: { isActive: boolean }) {
       {/* Cards resumo */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         <div className="bg-background border border-border rounded-xl p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-            <ArrowUpCircle className="h-5 w-5 text-green-600" />
+          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shrink-0">
+            <ArrowUpCircle className="h-5 w-5 text-foreground" />
           </div>
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Entradas</p>
-            <p className="text-base font-bold text-green-600 truncate">{fmt(totalEntradas)}</p>
+            <p className="text-base font-bold text-foreground truncate">{fmt(totalEntradas)}</p>
           </div>
         </div>
         <div className="bg-background border border-border rounded-xl p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-            <ArrowDownCircle className="h-5 w-5 text-red-500" />
+          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shrink-0">
+            <ArrowDownCircle className="h-5 w-5 text-foreground" />
           </div>
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Saídas</p>
-            <p className="text-base font-bold text-red-500 truncate">{fmt(totalSaidas)}</p>
+            <p className="text-base font-bold text-foreground truncate">{fmt(totalSaidas)}</p>
           </div>
         </div>
         <div className="bg-background border border-border rounded-xl p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-            <Receipt className="h-5 w-5 text-blue-600" />
+          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shrink-0">
+            <Receipt className="h-5 w-5 text-foreground" />
           </div>
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Vendas concluídas</p>
-            <p className="text-base font-bold text-blue-600 truncate">{fmt(totalVendas)}</p>
+            <p className="text-base font-bold text-foreground truncate">{fmt(totalVendas)}</p>
           </div>
         </div>
         <div className="bg-background border border-border rounded-xl p-4 flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${saldo >= 0 ? "bg-purple-100" : "bg-red-100"}`}>
+          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shrink-0">
             {saldo >= 0
-              ? <TrendingUp className="h-5 w-5 text-purple-600" />
-              : <TrendingDown className="h-5 w-5 text-red-500" />}
+              ? <TrendingUp className="h-5 w-5 text-foreground" />
+              : <TrendingDown className="h-5 w-5 text-muted-foreground" />}
           </div>
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Saldo</p>
-            <p className={`text-base font-bold truncate ${saldo >= 0 ? "text-purple-600" : "text-red-500"}`}>{fmt(saldo)}</p>
+            <p className="text-base font-bold text-foreground truncate">{fmt(saldo)}</p>
           </div>
         </div>
       </div>
@@ -2495,7 +2763,7 @@ function FluxoCaixaTab({ isActive }: { isActive: boolean }) {
           {(["todos", "entrada", "saida"] as const).map(t => (
             <button key={t} onClick={() => setTipoFiltro(t)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
-                ${tipoFiltro === t ? "bg-primary text-primary-foreground" : "bg-secondary hover:bg-secondary/80"}`}>
+                ${tipoFiltro === t ? "bg-foreground text-background" : "bg-secondary hover:bg-secondary/80"}`}>
               {t === "todos" ? "Todos" : t === "entrada" ? "Entradas" : "Saídas"}
             </button>
           ))}
@@ -2545,13 +2813,12 @@ function FluxoCaixaTab({ isActive }: { isActive: boolean }) {
             </TableHeader>
             <TableBody>
               {filtered.map(t => (
-                <TableRow key={t.id} className={t.source === "order" ? "bg-green-50/30 dark:bg-green-950/10" : ""}>
+                <TableRow key={t.id}>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                     {new Date(t.data + "T12:00:00").toLocaleDateString("pt-BR")}
                   </TableCell>
                   <TableCell>
-                    <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full
-                      ${t.tipo === "entrada" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+                    <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-foreground`}>
                       {t.tipo === "entrada" ? <ArrowUpCircle className="h-3 w-3" /> : <ArrowDownCircle className="h-3 w-3" />}
                       {t.tipo === "entrada" ? "Entrada" : "Saída"}
                     </span>
@@ -2565,13 +2832,13 @@ function FluxoCaixaTab({ isActive }: { isActive: boolean }) {
                     {t.observacao && <div className="text-xs text-muted-foreground">{t.observacao}</div>}
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{t.forma_pagamento ?? "—"}</TableCell>
-                  <TableCell className={`text-right font-semibold text-sm ${t.tipo === "entrada" ? "text-green-600" : "text-red-500"}`}>
+                  <TableCell className="text-right font-semibold text-sm text-foreground">
                     {t.tipo === "entrada" ? "+" : "-"}{fmt(t.valor)}
                   </TableCell>
                   <TableCell>
                     {t.source === "manual" && (
                       <button onClick={() => setDeleteId(t.id)}
-                        className="text-muted-foreground hover:text-destructive transition-colors">
+                        className="text-muted-foreground hover:text-foreground transition-colors">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     )}
@@ -2819,7 +3086,7 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-primary" />
+              <KeyRound className="h-4 w-4 text-foreground" />
               Acesso — {colabSel?.nome}
             </DialogTitle>
           </DialogHeader>
@@ -2888,14 +3155,12 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
             /* ── Gerenciar acesso existente ────────────────────────────── */
             <div className="space-y-5 pt-1">
               {/* Status badge */}
-              <div className={`flex items-center gap-2 rounded-lg p-3 ${
-                acessoAtual.ativo ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"
-              }`}>
+              <div className="flex items-center gap-2 rounded-lg p-3 bg-secondary border border-border">
                 {acessoAtual.ativo
-                  ? <ShieldCheck className="h-4 w-4 text-green-600 shrink-0" />
-                  : <ShieldAlert className="h-4 w-4 text-red-600 shrink-0" />}
+                  ? <ShieldCheck className="h-4 w-4 text-foreground shrink-0" />
+                  : <ShieldAlert className="h-4 w-4 text-muted-foreground shrink-0" />}
                 <div>
-                  <p className={`text-sm font-semibold ${acessoAtual.ativo ? "text-green-700" : "text-red-700"}`}>
+                  <p className="text-sm font-semibold text-foreground">
                     {acessoAtual.ativo ? "Acesso ativo" : "Acesso revogado"}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -2951,13 +3216,13 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
 
               {/* Revogar / Remover */}
               <div className="border-t border-border pt-4 flex gap-2">
-                <Button variant="outline" size="sm" className={`flex-1 gap-1.5 ${acessoAtual.ativo ? "text-amber-700 border-amber-300 hover:bg-amber-50" : "text-green-700 border-green-300 hover:bg-green-50"}`}
+                <Button variant="outline" size="sm" className="flex-1 gap-1.5"
                   onClick={handleToggleAcesso} disabled={acessoSaving}>
                   {acessoAtual.ativo
                     ? <><ShieldOff className="h-3.5 w-3.5" />Revogar acesso</>
                     : <><ShieldCheck className="h-3.5 w-3.5" />Reativar acesso</>}
                 </Button>
-                <Button variant="outline" size="sm" className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/5"
+                <Button variant="outline" size="sm" className="gap-1.5"
                   onClick={handleDeletarAcesso} disabled={acessoSaving}>
                   <Trash2 className="h-3.5 w-3.5" /> Remover conta
                 </Button>
@@ -3024,7 +3289,7 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              className="bg-foreground text-background hover:bg-foreground/90">
               {deleting ? "Removendo..." : "Remover"}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -3034,8 +3299,8 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
       {/* Cards */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         <div className="bg-background border border-border rounded-xl p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-            <Users className="h-5 w-5 text-primary" />
+          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shrink-0">
+            <Users className="h-5 w-5 text-foreground" />
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Total</p>
@@ -3043,21 +3308,21 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
           </div>
         </div>
         <div className="bg-background border border-border rounded-xl p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-            <UserCheck className="h-5 w-5 text-green-600" />
+          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shrink-0">
+            <UserCheck className="h-5 w-5 text-foreground" />
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Ativos</p>
-            <p className="text-lg font-bold text-green-600">{ativos}</p>
+            <p className="text-lg font-bold text-foreground">{ativos}</p>
           </div>
         </div>
         <div className="bg-background border border-border rounded-xl p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-            <UserX className="h-5 w-5 text-red-500" />
+          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shrink-0">
+            <UserX className="h-5 w-5 text-muted-foreground" />
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Inativos</p>
-            <p className="text-lg font-bold text-red-500">{inativos}</p>
+            <p className="text-lg font-bold text-foreground">{inativos}</p>
           </div>
         </div>
       </div>
@@ -3079,7 +3344,7 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
           {(["todos", "ativo", "inativo"] as const).map(f => (
             <button key={f} onClick={() => setFiltroAtivo(f)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
-                ${filtroAtivo === f ? "bg-primary text-primary-foreground" : "bg-secondary hover:bg-secondary/80"}`}>
+                ${filtroAtivo === f ? "bg-foreground text-background" : "bg-secondary hover:bg-secondary/80"}`}>
               {f === "todos" ? "Todos" : f === "ativo" ? "Ativos" : "Inativos"}
             </button>
           ))}
@@ -3127,7 +3392,7 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
                   <TableCell>
                     <div className="flex items-center gap-2.5">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0
-                        ${c.ativo ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                        ${c.ativo ? "bg-secondary text-foreground" : "bg-muted text-muted-foreground"}`}>
                         {c.nome.charAt(0).toUpperCase()}
                       </div>
                       <div>
@@ -3135,7 +3400,7 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
                           <p className="font-medium text-sm">{c.nome}</p>
                           {acessoMap[c.id] && (
                             <span className={`inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                              acessoMap[c.id].ativo ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"
+                              acessoMap[c.id].ativo ? "bg-foreground text-background" : "bg-secondary text-muted-foreground"
                             }`}>
                               {acessoMap[c.id].ativo
                                 ? <><ShieldCheck className="h-2.5 w-2.5" />Login</>
@@ -3158,7 +3423,7 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
                   <TableCell className="text-center">
                     <button onClick={() => handleToggleAtivo(c)}
                       className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full transition-colors
-                        ${c.ativo ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>
+                        ${c.ativo ? "bg-foreground text-background hover:bg-foreground/90" : "bg-secondary text-muted-foreground hover:bg-muted"}`}>
                       {c.ativo ? <UserCheck className="h-3 w-3" /> : <UserX className="h-3 w-3" />}
                       {c.ativo ? "Ativo" : "Inativo"}
                     </button>
@@ -3168,7 +3433,7 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
                       {isAdmin && (
                         <button onClick={() => openAcessoDialog(c)}
                           title="Gerenciar acesso ao sistema"
-                          className="text-muted-foreground hover:text-primary transition-colors p-1">
+                          className="text-muted-foreground hover:text-foreground transition-colors p-1">
                           <KeyRound className="h-3.5 w-3.5" />
                         </button>
                       )}
@@ -3177,7 +3442,7 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button onClick={() => setDeleteId(c.id)}
-                        className="text-muted-foreground hover:text-destructive transition-colors p-1">
+                        className="text-muted-foreground hover:text-foreground transition-colors p-1">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -3365,7 +3630,7 @@ function ClientesTab({ isActive }: { isActive: boolean }) {
                       onClick={() => setExpanded(isExp ? null : p.id)}>
                       <TableCell>
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-secondary text-foreground flex items-center justify-center text-xs font-bold shrink-0">
                             {p.name?.charAt(0)?.toUpperCase() ?? "?"}
                           </div>
                           <p className="font-medium text-sm">{p.name ?? "Sem nome"}</p>
@@ -3424,6 +3689,13 @@ function ClientesTab({ isActive }: { isActive: boolean }) {
 }
 
 // ─── Aba Estoque ─────────────────────────────────────────────────────────────
+const GRADE_PRESETS: Record<string, { label: string; sizes: string[] }> = {
+  calcados_adulto:   { label: "Calçados Adulto",  sizes: ["33","34","35","36","37","38","39","40","41","42","43","44","45"] },
+  calcados_infantil: { label: "Calçados Infantil", sizes: ["15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32"] },
+  roupas_adulto:     { label: "Roupas Adulto",     sizes: ["PP","P","M","G","GG","XGG"] },
+  roupas_infantil:   { label: "Roupas Infantil",   sizes: ["2","4","6","8","10","12","14","16"] },
+};
+
 function EstoqueTab({ isActive, isAdmin = true }: { isActive: boolean; isAdmin?: boolean }) {
   const [produtos, setProdutos]   = useState<EstoqueProduto[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
@@ -3440,6 +3712,12 @@ function EstoqueTab({ isActive, isAdmin = true }: { isActive: boolean; isAdmin?:
   const [validadeEdit,   setValidadeEdit]   = useState("");
   const [fornecedorEdit, setFornecedorEdit] = useState("");
   const [saving,         setSaving]         = useState(false);
+  const [modoAjuste,     setModoAjuste]     = useState<"total" | "tamanhos">("total");
+  const [sizeStockEdit,  setSizeStockEdit]  = useState<Record<string, string>>({});
+  const [workingSizes,   setWorkingSizes]   = useState<string[]>([]);
+  const [showGradeSetup, setShowGradeSetup] = useState(false);
+  const [customSizeInput,setCustomSizeInput]= useState("");
+  const [detalhesOpen,   setDetalhesOpen]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -3456,6 +3734,13 @@ function EstoqueTab({ isActive, isAdmin = true }: { isActive: boolean; isAdmin?:
     if (isActive) load();
   }, [isActive, load]);
 
+  function sortSizes(arr: string[]): string[] {
+    return [...arr].sort((a, b) => {
+      const na = Number(a), nb = Number(b);
+      return (!isNaN(na) && !isNaN(nb)) ? na - nb : a.localeCompare(b);
+    });
+  }
+
   function openAjuste(p: EstoqueProduto) {
     setProdutoSel(p);
     setTipoAjuste("entrada");
@@ -3464,41 +3749,103 @@ function EstoqueTab({ isActive, isAdmin = true }: { isActive: boolean; isAdmin?:
     setLoteEdit(p.lote ?? "");
     setValidadeEdit(p.validade ?? "");
     setFornecedorEdit(p.fornecedor_id ?? "");
+    setCustomSizeInput("");
+    setDetalhesOpen(false);
+    setShowGradeSetup(false);
+    if (p.size_stock && Object.keys(p.size_stock).length > 0) {
+      const ws = sortSizes(Object.keys(p.size_stock));
+      setWorkingSizes(ws);
+      const init: Record<string, string> = {};
+      ws.forEach(s => { init[s] = ""; });
+      setSizeStockEdit(init);
+      setModoAjuste("tamanhos");
+    } else {
+      setWorkingSizes([]);
+      setSizeStockEdit({});
+      setModoAjuste("total");
+    }
     setAjusteOpen(true);
+  }
+
+  function applyPreset(key: string) {
+    const preset = GRADE_PRESETS[key];
+    if (!preset) return;
+    const ws = preset.sizes;
+    setWorkingSizes(ws);
+    const init: Record<string, string> = {};
+    ws.forEach(s => { init[s] = ""; });
+    setSizeStockEdit(init);
+    setModoAjuste("tamanhos");
+  }
+
+  function addCustomSize() {
+    const s = customSizeInput.trim().toUpperCase();
+    if (!s || workingSizes.includes(s)) return;
+    const ws = sortSizes([...workingSizes, s]);
+    setWorkingSizes(ws);
+    setSizeStockEdit(prev => ({ ...prev, [s]: "" }));
+    setCustomSizeInput("");
+    setModoAjuste("tamanhos");
+  }
+
+  function removeSize(size: string) {
+    const ws = workingSizes.filter(s => s !== size);
+    setWorkingSizes(ws);
+    setSizeStockEdit(prev => { const next = { ...prev }; delete next[size]; return next; });
+    if (ws.length === 0) { setModoAjuste("total"); setShowGradeSetup(false); }
   }
 
   async function handleSaveAjuste() {
     if (!produtoSel) return;
-    const qty = Number(qtdAjuste);
-    if (tipoAjuste !== "inventario" && (isNaN(qty) || qty <= 0)) {
-      toast.error("Quantidade inválida"); return;
-    }
-    if (tipoAjuste === "inventario" && (isNaN(qty) || qty < 0)) {
-      toast.error("Quantidade inválida"); return;
-    }
     setSaving(true);
     try {
-      let novoStock = produtoSel.stock;
-      if      (tipoAjuste === "entrada")    novoStock = novoStock + qty;
-      else if (tipoAjuste === "saida")      novoStock = Math.max(0, novoStock - qty);
-      else                                  novoStock = qty;
       const novoMin  = Number(stockMinEdit);
       const minFinal = isNaN(novoMin) ? produtoSel.stock_min : novoMin;
-      await ajustarEstoque(produtoSel.id, novoStock, {
-        stockMin:      minFinal,
-        lote:          loteEdit,
-        validade:      validadeEdit || null,
-        fornecedor_id: fornecedorEdit || null,
-      });
-      setProdutos(prev =>
-        prev.map(p => p.id === produtoSel.id
-          ? { ...p, stock: novoStock, stock_min: minFinal,
-              lote: loteEdit || null, validade: validadeEdit || null,
-              fornecedor_id: fornecedorEdit || null }
-          : p
-        )
-      );
-      toast.success("Estoque atualizado");
+      const opts = { stockMin: minFinal, lote: loteEdit, validade: validadeEdit || null, fornecedor_id: fornecedorEdit || null };
+
+      if (modoAjuste === "tamanhos" && workingSizes.length > 0) {
+        // ── Modo por tamanho ──────────────────────────────────────
+        const atual = produtoSel.size_stock ?? {};
+        const novoSizeStock: Record<string, number> = {};
+        for (const size of workingSizes) {
+          const inputVal = Number(sizeStockEdit[size]);
+          const atualVal = atual[size] ?? 0;
+          if (tipoAjuste === "entrada")    novoSizeStock[size] = atualVal + (isNaN(inputVal) ? 0 : inputVal);
+          else if (tipoAjuste === "saida") novoSizeStock[size] = Math.max(0, atualVal - (isNaN(inputVal) ? 0 : inputVal));
+          else                             novoSizeStock[size] = isNaN(inputVal) || inputVal < 0 ? atualVal : inputVal;
+        }
+        const totalStock = Object.values(novoSizeStock).reduce((s, v) => s + v, 0);
+        await ajustarEstoque(produtoSel.id, totalStock, { ...opts, size_stock: novoSizeStock });
+        setProdutos(prev =>
+          prev.map(p => p.id === produtoSel.id
+            ? { ...p, stock: totalStock, stock_min: minFinal, size_stock: novoSizeStock,
+                lote: loteEdit || null, validade: validadeEdit || null, fornecedor_id: fornecedorEdit || null }
+            : p
+          )
+        );
+      } else {
+        // ── Modo total ────────────────────────────────────────────
+        const qty = Number(qtdAjuste);
+        if (tipoAjuste !== "inventario" && (isNaN(qty) || qty <= 0)) { toast.error("Quantidade inválida"); setSaving(false); return; }
+        if (tipoAjuste === "inventario" && (isNaN(qty) || qty < 0))  { toast.error("Quantidade inválida"); setSaving(false); return; }
+        let novoStock = produtoSel.stock;
+        if      (tipoAjuste === "entrada")  novoStock = novoStock + qty;
+        else if (tipoAjuste === "saida")    novoStock = Math.max(0, novoStock - qty);
+        else                                novoStock = qty;
+        // Se o produto tinha grade mas o usuário removeu todos os tamanhos → zera size_stock
+        const hadSizes = !!(produtoSel.size_stock && Object.keys(produtoSel.size_stock).length > 0);
+        const extraOpts = hadSizes && workingSizes.length === 0 ? { size_stock: null } : {};
+        await ajustarEstoque(produtoSel.id, novoStock, { ...opts, ...extraOpts });
+        setProdutos(prev =>
+          prev.map(p => p.id === produtoSel.id
+            ? { ...p, stock: novoStock, stock_min: minFinal, size_stock: hadSizes && workingSizes.length === 0 ? null : p.size_stock,
+                lote: loteEdit || null, validade: validadeEdit || null, fornecedor_id: fornecedorEdit || null }
+            : p
+          )
+        );
+      }
+
+      toast.success("Estoque atualizado!");
       setAjusteOpen(false);
     } catch { toast.error("Erro ao atualizar"); }
     finally { setSaving(false); }
@@ -3537,10 +3884,10 @@ function EstoqueTab({ isActive, isAdmin = true }: { isActive: boolean; isAdmin?:
 
   function StockBadge({ p }: { p: EstoqueProduto }) {
     if (p.stock === 0)
-      return <span className="inline-flex text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">Sem estoque</span>;
+      return <span className="inline-flex text-xs font-medium px-2 py-0.5 rounded-full bg-secondary text-muted-foreground border border-border">Sem estoque</span>;
     if (p.stock <= p.stock_min)
-      return <span className="inline-flex text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Estoque baixo</span>;
-    return <span className="inline-flex text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700">OK</span>;
+      return <span className="inline-flex text-xs font-medium px-2 py-0.5 rounded-full bg-secondary text-foreground">Estoque baixo</span>;
+    return <span className="inline-flex text-xs font-medium px-2 py-0.5 rounded-full bg-foreground text-background">OK</span>;
   }
 
   return (
@@ -3549,31 +3896,31 @@ function EstoqueTab({ isActive, isAdmin = true }: { isActive: boolean; isAdmin?:
       {(semEstoque > 0 || baixoEstoque > 0 || vencendo30.length > 0) && (
         <div className="grid sm:grid-cols-3 gap-3">
           {semEstoque > 0 && (
-            <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-3.5">
-              <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
+            <div className="flex items-center gap-3 bg-secondary border border-border rounded-xl p-3.5">
+              <AlertCircle className="h-5 w-5 text-foreground shrink-0" />
               <div>
-                <p className="text-sm font-semibold text-red-700">{semEstoque} sem estoque</p>
-                <p className="text-xs text-red-600">Reposição imediata</p>
+                <p className="text-sm font-semibold text-foreground">{semEstoque} sem estoque</p>
+                <p className="text-xs text-muted-foreground">Reposição imediata</p>
               </div>
             </div>
           )}
           {baixoEstoque > 0 && (
-            <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3.5">
-              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+            <div className="flex items-center gap-3 bg-secondary border border-border rounded-xl p-3.5">
+              <AlertCircle className="h-5 w-5 text-foreground shrink-0" />
               <div>
-                <p className="text-sm font-semibold text-amber-700">{baixoEstoque} estoque baixo</p>
-                <p className="text-xs text-amber-600">Abaixo do mínimo</p>
+                <p className="text-sm font-semibold text-foreground">{baixoEstoque} estoque baixo</p>
+                <p className="text-xs text-muted-foreground">Abaixo do mínimo</p>
               </div>
             </div>
           )}
           {vencendo30.length > 0 && (
-            <div className="flex items-center gap-3 bg-purple-50 border border-purple-200 rounded-xl p-3.5">
-              <CalendarCheck className="h-5 w-5 text-purple-600 shrink-0" />
+            <div className="flex items-center gap-3 bg-secondary border border-border rounded-xl p-3.5">
+              <CalendarCheck className="h-5 w-5 text-foreground shrink-0" />
               <div>
-                <p className="text-sm font-semibold text-purple-700">
+                <p className="text-sm font-semibold text-foreground">
                   {vencidos.length > 0 ? `${vencidos.length} vencido(s)` : `${vencendo30.length} vencem em 30 dias`}
                 </p>
-                <p className="text-xs text-purple-600">Verificar validade</p>
+                <p className="text-xs text-muted-foreground">Verificar validade</p>
               </div>
             </div>
           )}
@@ -3591,7 +3938,7 @@ function EstoqueTab({ isActive, isAdmin = true }: { isActive: boolean; isAdmin?:
             <button key={f} onClick={() => setFiltro(f)}
               className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                 filtro === f
-                  ? "bg-primary text-primary-foreground"
+                  ? "bg-foreground text-background"
                   : "bg-background border border-border text-muted-foreground hover:text-foreground"
               }`}>
               {f === "todos" ? "Todos" : f === "baixo" ? "Estoque baixo" : f === "zero" ? "Sem estoque" : "Vencendo"}
@@ -3632,7 +3979,7 @@ function EstoqueTab({ isActive, isAdmin = true }: { isActive: boolean; isAdmin?:
                   </TableCell>
                   <TableCell className="text-center">
                     <span className={`text-lg font-bold ${
-                      p.stock === 0 ? "text-red-600" : p.stock <= p.stock_min ? "text-amber-600" : "text-foreground"
+                      p.stock === 0 ? "text-muted-foreground" : p.stock <= p.stock_min ? "text-foreground" : "text-foreground"
                     }`}>{p.stock}</span>
                   </TableCell>
                   <TableCell className="text-center text-sm text-muted-foreground hidden sm:table-cell">{p.stock_min}</TableCell>
@@ -3645,8 +3992,8 @@ function EstoqueTab({ isActive, isAdmin = true }: { isActive: boolean; isAdmin?:
                       )}
                       {p.validade && (
                         <p className={`text-xs font-medium flex items-center gap-1 justify-center ${
-                          isVencido(p.validade) ? "text-red-600" :
-                          vencendo30.some(v => v.id === p.id) ? "text-amber-600" : "text-muted-foreground"
+                          isVencido(p.validade) ? "text-muted-foreground" :
+                          vencendo30.some(v => v.id === p.id) ? "text-foreground" : "text-muted-foreground"
                         }`}>
                           <CalendarCheck className="h-3 w-3" />{fmtValidade(p.validade)}
                         </p>
@@ -3670,129 +4017,342 @@ function EstoqueTab({ isActive, isAdmin = true }: { isActive: boolean; isAdmin?:
 
       {/* Dialog ajuste */}
       <Dialog open={ajusteOpen} onOpenChange={setAjusteOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Ajustar estoque</DialogTitle>
+            <DialogTitle>Ajustar Estoque</DialogTitle>
           </DialogHeader>
+
           {produtoSel && (() => {
             const estoqueAtual = produtoSel.stock ?? 0;
-            const qty = Number(qtdAjuste) || 0;
-            const preview =
-              tipoAjuste === "entrada"    ? estoqueAtual + qty :
-              tipoAjuste === "saida"      ? Math.max(0, estoqueAtual - qty) :
-              qty;
+            const hasSizes     = workingSizes.length > 0;
+            const prodHadSizes = !!(produtoSel.size_stock && Object.keys(produtoSel.size_stock).length > 0);
+            const qty          = Number(qtdAjuste) || 0;
+            const previewTotal =
+              tipoAjuste === "entrada" ? estoqueAtual + qty :
+              tipoAjuste === "saida"   ? Math.max(0, estoqueAtual - qty) : qty;
 
             return (
-              <div className="space-y-4">
-                {/* Produto + estoque atual */}
-                <div className="bg-secondary rounded-xl p-3 flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-sm">{produtoSel.name}</p>
-                    <p className="text-xs text-muted-foreground">{produtoSel.brand}</p>
+              <div className="space-y-6 pt-1">
+
+                {/* ── Produto ─────────────────────────────────────────── */}
+                <div className="flex items-center justify-between gap-4 pb-2 border-b border-border">
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate">{produtoSel.name}</p>
+                    <p className="text-sm text-muted-foreground">{produtoSel.brand}</p>
+                    {hasSizes && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Grade: {workingSizes.join(" / ")}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-2xl font-bold text-foreground leading-none">{estoqueAtual}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">estoque atual</p>
+                    <p className={`text-4xl font-bold leading-none tabular-nums ${
+                      estoqueAtual === 0 ? "text-muted-foreground" :
+                      estoqueAtual <= produtoSel.stock_min ? "text-foreground" : "text-foreground"
+                    }`}>{estoqueAtual}</p>
+                    <p className="text-xs text-muted-foreground mt-1">unidades em estoque</p>
                   </div>
                 </div>
 
-                {/* Tipo de ajuste */}
-                <div className="space-y-1.5">
-                  <Label>Tipo de ajuste</Label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {(["entrada", "saida", "inventario"] as const).map(t => (
+                {/* ── Tipo de movimentação ─────────────────────────────── */}
+                <div className="space-y-3">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
+                    Tipo de movimentação
+                  </p>
+                  <div className="flex border border-border rounded-lg overflow-hidden">
+                    {(["entrada", "saida", "inventario"] as const).map((t, i) => (
                       <button key={t} onClick={() => setTipoAjuste(t)}
-                        className={`py-2 rounded-lg text-xs font-medium border transition-colors ${
+                        className={`flex-1 py-2.5 text-sm font-medium transition-colors ${i > 0 ? "border-l border-border" : ""} ${
                           tipoAjuste === t
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "border-border text-muted-foreground hover:text-foreground"
+                            ? "bg-foreground text-background"
+                            : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                         }`}>
-                        {t === "entrada" ? "+ Entrada" : t === "saida" ? "- Saída" : "= Inventário"}
+                        {t === "entrada" ? "Entrada" : t === "saida" ? "Saída" : "Inventário"}
                       </button>
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {tipoAjuste === "entrada"
-                      ? "Soma ao estoque — use ao receber mercadoria"
+                      ? "Soma unidades ao estoque atual — use ao receber uma nova remessa de produtos."
                       : tipoAjuste === "saida"
-                      ? "Subtrai do estoque — use para avaria ou perda"
-                      : "Define o valor exato — use na contagem física"}
+                      ? "Subtrai do estoque — use para registrar perdas, avarias ou devoluções."
+                      : "Define a quantidade exata — use ao fazer uma contagem física do estoque."}
                   </p>
                 </div>
 
-                {/* Quantidade */}
-                <div className="space-y-1.5">
-                  <Label>{tipoAjuste === "inventario" ? "Quantidade contada" : "Quantidade"}</Label>
-                  <Input
-                    type="number" min="0"
-                    value={qtdAjuste}
-                    onChange={e => setQtdAjuste(e.target.value)}
-                    placeholder="0"
-                    onKeyDown={e => e.key === "Enter" && handleSaveAjuste()}
-                  />
+                <div className="h-px bg-border" />
+
+                {/* ── Quantidade ───────────────────────────────────────── */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
+                      {tipoAjuste === "inventario" ? "Contagem" : tipoAjuste === "entrada" ? "Quantidade de entrada" : "Quantidade de saída"}
+                    </p>
+                    {hasSizes && (
+                      <div className="flex border border-border rounded-lg overflow-hidden text-xs">
+                        {(["tamanhos", "total"] as const).map((m, i) => (
+                          <button key={m} onClick={() => setModoAjuste(m)}
+                            className={`px-3 py-1.5 font-medium transition-colors ${i > 0 ? "border-l border-border" : ""} ${
+                              modoAjuste === m
+                                ? "bg-foreground text-background"
+                                : "text-muted-foreground hover:bg-secondary"
+                            }`}>
+                            {m === "tamanhos" ? "Por tamanho" : "Total geral"}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Modo por tamanho */}
+                  {modoAjuste === "tamanhos" && hasSizes && (
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-border overflow-hidden">
+                        {/* Cabeçalho */}
+                        <div className="grid grid-cols-[auto_1fr_auto_auto] gap-3 px-4 py-2 bg-secondary border-b border-border">
+                          <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wide w-14">Tamanho</span>
+                          <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wide">Estoque atual</span>
+                          <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wide w-24 text-center">
+                            {tipoAjuste === "inventario" ? "Nova qty" : tipoAjuste === "entrada" ? "Adicionar" : "Retirar"}
+                          </span>
+                          <span className="w-6" />
+                        </div>
+                        {/* Linhas */}
+                        <div className="divide-y divide-border">
+                          {workingSizes.map(size => {
+                            const atualVal  = produtoSel.size_stock?.[size] ?? 0;
+                            const inputVal  = Number(sizeStockEdit[size]) || 0;
+                            const resultado =
+                              tipoAjuste === "entrada" ? atualVal + inputVal :
+                              tipoAjuste === "saida"   ? Math.max(0, atualVal - inputVal) : inputVal;
+                            const changed   = sizeStockEdit[size] !== "";
+                            const isNew     = !produtoSel.size_stock?.[size] && produtoSel.size_stock !== null;
+                            return (
+                              <div key={size}
+                                className={`grid grid-cols-[auto_1fr_auto_auto] gap-3 items-center px-4 py-3 transition-colors ${
+                                  changed ? "bg-secondary/60" : "bg-background"
+                                }`}>
+                                <div className="w-14 flex items-center gap-1.5">
+                                  <span className="text-sm font-semibold">{size}</span>
+                                  {isNew && (
+                                    <span className="text-[9px] border border-border rounded px-1 py-0.5 text-muted-foreground font-medium">novo</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className={`text-sm font-semibold tabular-nums ${
+                                    atualVal === 0 ? "text-muted-foreground" : atualVal <= 2 ? "text-foreground" : "text-foreground"
+                                  }`}>{atualVal}</span>
+                                  {changed && (
+                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                      <span>→</span>
+                                      <span className="font-semibold text-foreground">{resultado}</span>
+                                    </span>
+                                  )}
+                                </div>
+                                <Input
+                                  type="number" min="0"
+                                  value={sizeStockEdit[size]}
+                                  onChange={e => setSizeStockEdit(prev => ({ ...prev, [size]: e.target.value }))}
+                                  placeholder={tipoAjuste === "inventario" ? String(atualVal) : "0"}
+                                  className="h-8 w-24 text-center text-sm"
+                                />
+                                <button onClick={() => removeSize(size)} title="Remover tamanho"
+                                  className="w-6 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Adicionar tamanho */}
+                      <div className="flex gap-2">
+                        <Input value={customSizeInput} onChange={e => setCustomSizeInput(e.target.value)}
+                          placeholder="Adicionar tamanho (ex: 46, XXL…)"
+                          className="h-9 text-sm"
+                          onKeyDown={e => e.key === "Enter" && addCustomSize()} />
+                        <Button size="sm" variant="outline" onClick={addCustomSize}
+                          disabled={!customSizeInput.trim()} className="h-9 px-3 shrink-0">
+                          <Plus className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+
+                      {/* Total preview */}
+                      {workingSizes.some(s => sizeStockEdit[s] !== "") && (
+                        <div className="flex items-center justify-between bg-secondary rounded-lg px-4 py-2.5">
+                          <span className="text-xs text-muted-foreground">Total após salvar</span>
+                          <span className="text-sm font-semibold tabular-nums">
+                            {workingSizes.reduce((sum, s) => {
+                              const atual = produtoSel.size_stock?.[s] ?? 0;
+                              const v = Number(sizeStockEdit[s]) || 0;
+                              return sum + (
+                                tipoAjuste === "entrada" ? atual + v :
+                                tipoAjuste === "saida"   ? Math.max(0, atual - v) :
+                                (v >= 0 ? v : atual)
+                              );
+                            }, 0)} unidades
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Modo total */}
+                  {modoAjuste === "total" && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-4 items-end">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground font-medium">
+                            {tipoAjuste === "inventario" ? "Quantidade contada" : "Quantidade"}
+                          </Label>
+                          <Input
+                            type="number" min="0"
+                            value={qtdAjuste}
+                            onChange={e => setQtdAjuste(e.target.value)}
+                            placeholder={tipoAjuste === "inventario" ? String(estoqueAtual) : "0"}
+                            onKeyDown={e => e.key === "Enter" && handleSaveAjuste()}
+                            className="text-center text-xl h-12 font-semibold tabular-nums"
+                          />
+                        </div>
+                        {qty > 0 && (
+                          <div className="bg-secondary rounded-xl px-4 py-3 space-y-0.5 h-12 flex flex-col justify-center">
+                            <p className="text-xs text-muted-foreground">Resultado</p>
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg font-bold tabular-nums">{previewTotal}</span>
+                              <span className={`text-xs font-semibold ${previewTotal > estoqueAtual ? "text-foreground" : "text-destructive"}`}>
+                                {previewTotal > estoqueAtual
+                                  ? `+${previewTotal - estoqueAtual}`
+                                  : `−${estoqueAtual - previewTotal}`}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Preview do resultado */}
-                {qty > 0 && (
-                  <div className="flex items-center justify-between bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
-                    <span className="text-xs text-muted-foreground">Resultado após salvar</span>
-                    <span className="font-bold text-primary text-sm">
-                      {preview} unidade{preview !== 1 ? "s" : ""}
-                    </span>
+                {/* ── Grade de tamanhos (produto sem grade) ────────────── */}
+                {!hasSizes && (
+                  <>
+                    <div className="h-px bg-border" />
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
+                          Grade de tamanhos
+                        </p>
+                        <button onClick={() => setShowGradeSetup(o => !o)}
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+                          {showGradeSetup ? "Cancelar" : "Habilitar grade"}
+                          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showGradeSetup ? "rotate-180" : ""}`} />
+                        </button>
+                      </div>
+                      {!showGradeSetup ? (
+                        <p className="text-xs text-muted-foreground">
+                          Para calçados e roupas, controle o estoque por tamanho individualmente.
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="border border-border rounded-xl overflow-hidden">
+                            <div className="px-4 py-3 border-b border-border bg-secondary">
+                              <p className="text-xs font-medium">Grades pré-definidas</p>
+                            </div>
+                            <div className="px-4 py-3 flex flex-wrap gap-2">
+                              {Object.entries(GRADE_PRESETS).map(([key, preset]) => (
+                                <button key={key} onClick={() => applyPreset(key)}
+                                  className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors">
+                                  {preset.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Input value={customSizeInput} onChange={e => setCustomSizeInput(e.target.value)}
+                              placeholder="Tamanho avulso (ex: 38, M, PP…)"
+                              className="h-9 text-sm"
+                              onKeyDown={e => e.key === "Enter" && addCustomSize()} />
+                            <Button size="sm" variant="outline" onClick={addCustomSize}
+                              disabled={!customSizeInput.trim()} className="h-9 px-3 shrink-0">
+                              <Plus className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* Aviso: grade nova */}
+                {hasSizes && !prodHadSizes && (
+                  <div className="bg-secondary border border-border rounded-lg px-4 py-2.5">
+                    <p className="text-xs text-muted-foreground font-medium">
+                      A grade de tamanhos será criada ao salvar.
+                    </p>
                   </div>
                 )}
 
-                {/* Lote e Validade */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="flex items-center gap-1"><Hash className="h-3 w-3" />Lote</Label>
-                    <Input
-                      value={loteEdit}
-                      onChange={e => setLoteEdit(e.target.value)}
-                      placeholder="Ex: L2024001"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="flex items-center gap-1"><CalendarCheck className="h-3 w-3" />Validade</Label>
-                    <Input
-                      type="date"
-                      value={validadeEdit}
-                      onChange={e => setValidadeEdit(e.target.value)}
-                    />
-                  </div>
+                <div className="h-px bg-border" />
+
+                {/* ── Detalhes adicionais ──────────────────────────────── */}
+                <div className="border border-border rounded-xl overflow-hidden">
+                  <button onClick={() => setDetalhesOpen(o => !o)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary transition-colors text-left">
+                    <span className="text-sm font-medium">Detalhes adicionais</span>
+                    <div className="flex items-center gap-2">
+                      {(loteEdit || validadeEdit || fornecedorEdit) && (
+                        <span className="text-[11px] text-muted-foreground font-medium">Preenchido</span>
+                      )}
+                      <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${detalhesOpen ? "rotate-180" : ""}`} />
+                    </div>
+                  </button>
+                  {detalhesOpen && (
+                    <div className="px-4 pb-4 pt-3 space-y-4 border-t border-border">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Lote</Label>
+                          <Input value={loteEdit} onChange={e => setLoteEdit(e.target.value)}
+                            placeholder="Ex: L2024001" className="h-9 text-sm" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Validade</Label>
+                          <Input type="date" value={validadeEdit} onChange={e => setValidadeEdit(e.target.value)} className="h-9 text-sm" />
+                        </div>
+                      </div>
+                      {fornecedores.length > 0 && (
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Fornecedor</Label>
+                          <select value={fornecedorEdit} onChange={e => setFornecedorEdit(e.target.value)}
+                            className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-foreground/20">
+                            <option value="">Nenhum</option>
+                            {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Estoque mínimo (alerta)</Label>
+                        <Input type="number" min="0" value={stockMinEdit}
+                          onChange={e => setStockMinEdit(e.target.value)}
+                          placeholder="5" className="h-9 text-sm max-w-32" />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Fornecedor */}
-                {fornecedores.length > 0 && (
-                  <div className="space-y-1.5">
-                    <Label className="flex items-center gap-1"><Building2 className="h-3 w-3" />Fornecedor</Label>
-                    <select
-                      value={fornecedorEdit}
-                      onChange={e => setFornecedorEdit(e.target.value)}
-                      className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background focus:outline-none focus:border-primary"
-                    >
-                      <option value="">— Nenhum —</option>
-                      {fornecedores.map(f => (
-                        <option key={f.id} value={f.id}>{f.nome}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Estoque mínimo */}
-                <div className="space-y-1.5">
-                  <Label>Estoque mínimo (alerta)</Label>
-                  <Input
-                    type="number" min="0"
-                    value={stockMinEdit}
-                    onChange={e => setStockMinEdit(e.target.value)}
-                    placeholder="5"
-                  />
+                {/* ── Ações ────────────────────────────────────────────── */}
+                <div className="flex gap-3">
+                  <Button variant="outline" onClick={() => setAjusteOpen(false)}
+                    disabled={saving} className="flex-1 h-11">
+                    Cancelar
+                  </Button>
+                  <Button className="flex-1 h-11 font-semibold" onClick={handleSaveAjuste} disabled={saving}>
+                    {saving
+                      ? <><RefreshCw className="h-4 w-4 animate-spin mr-2" />Salvando…</>
+                      : tipoAjuste === "entrada" ? "Confirmar entrada"
+                      : tipoAjuste === "saida"   ? "Confirmar saída"
+                      : "Salvar inventário"}
+                  </Button>
                 </div>
-
-                <Button className="w-full" onClick={handleSaveAjuste} disabled={saving}>
-                  {saving ? <><RefreshCw className="h-4 w-4 animate-spin mr-2" />Salvando...</> : "Salvar ajuste"}
-                </Button>
               </div>
             );
           })()}
@@ -3925,7 +4485,7 @@ function FornecedoresTab({ isActive }: { isActive: boolean }) {
                   <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{f.cnpj || "—"}</TableCell>
                   <TableCell className="text-center">
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                      f.is_active ? "bg-green-100 text-green-700" : "bg-secondary text-muted-foreground"
+                      f.is_active ? "bg-foreground text-background" : "bg-secondary text-muted-foreground"
                     }`}>
                       {f.is_active ? "Ativo" : "Inativo"}
                     </span>
@@ -3936,7 +4496,7 @@ function FornecedoresTab({ isActive }: { isActive: boolean }) {
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => toggleAtivo(f)}
-                        className={f.is_active ? "text-amber-600 hover:text-amber-700" : "text-green-600 hover:text-green-700"}>
+                        className={f.is_active ? "text-muted-foreground hover:text-foreground" : "text-foreground hover:text-foreground"}>
                         {f.is_active ? <Ban className="h-3.5 w-3.5" /> : <BadgeCheck className="h-3.5 w-3.5" />}
                       </Button>
                     </div>
@@ -4008,6 +4568,7 @@ function CaixaTab({ isActive }: { isActive: boolean }) {
   const [saldoInicial,    setSaldoInicial]    = useState("");
   const [obs,             setObs]             = useState("");
   const [migracaoFalta,   setMigracaoFalta]   = useState(false);
+  const [verTodosHist,    setVerTodosHist]    = useState(false);
 
   const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const fmtData = (iso: string) => {
@@ -4129,21 +4690,21 @@ function CaixaTab({ isActive }: { isActive: boolean }) {
 
   if (migracaoFalta) return (
     <div className="max-w-lg mx-auto mt-10">
-      <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 space-y-4">
+      <div className="bg-secondary border border-border rounded-xl p-6 space-y-4">
         <div className="flex items-center gap-3">
-          <AlertTriangle className="h-6 w-6 text-amber-500 shrink-0" />
-          <h3 className="font-semibold text-amber-800">Migração pendente</h3>
+          <AlertTriangle className="h-6 w-6 text-foreground shrink-0" />
+          <h3 className="font-semibold text-foreground">Migração pendente</h3>
         </div>
-        <p className="text-sm text-amber-700 leading-relaxed">
+        <p className="text-sm text-muted-foreground leading-relaxed">
           As tabelas de <strong>Fechamento de Caixa</strong> e <strong>Fornecedores</strong> ainda não foram criadas no banco de dados.
         </p>
-        <p className="text-sm text-amber-700">
-          Execute o arquivo <code className="bg-amber-100 px-1.5 py-0.5 rounded text-xs font-mono">migration_v2.sql</code> no <strong>Supabase → SQL Editor</strong> e volte aqui.
+        <p className="text-sm text-muted-foreground">
+          Execute o arquivo <code className="bg-background border border-border px-1.5 py-0.5 rounded text-xs font-mono">migration_v2.sql</code> no <strong>Supabase → SQL Editor</strong> e volte aqui.
         </p>
-        <ol className="text-sm text-amber-700 list-decimal list-inside space-y-1">
+        <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
           <li>Abra o painel do Supabase</li>
           <li>Vá em <strong>SQL Editor</strong></li>
-          <li>Cole e execute o conteúdo de <code className="bg-amber-100 px-1 rounded text-xs font-mono">migration_v2.sql</code></li>
+          <li>Cole e execute o conteúdo de <code className="bg-background border border-border px-1 rounded text-xs font-mono">migration_v2.sql</code></li>
           <li>Volte aqui e recarregue a página</li>
         </ol>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
@@ -4156,28 +4717,27 @@ function CaixaTab({ isActive }: { isActive: boolean }) {
 
   const isFechado = caixaHoje?.status === "fechado";
   const totalEntradas = (caixaHoje?.total_dinheiro ?? 0) + (caixaHoje?.total_pix ?? 0) + (caixaHoje?.total_cartao ?? 0);
+  const historicoVis = verTodosHist ? historico : historico.slice(0, 3);
 
   return (
-    <div className="space-y-5 max-w-2xl">
-
+    <>
       {/* ── Dialog: fechar caixa pendente ────────────────────────────────── */}
       <Dialog open={fechandoDialog} onOpenChange={v => { if (!fechandoPendente) setFechandoDialog(v); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
               Fechar caixa — {pendenteSel && fmtData(pendenteSel.data)}
             </DialogTitle>
           </DialogHeader>
           {pendenteSel && (
             <div className="space-y-4">
-              {/* Resumo dos valores */}
               <div className="bg-secondary rounded-lg p-4 space-y-2 text-sm">
                 {[
-                  { label: "Dinheiro", v: pendenteSel.total_dinheiro, cls: "text-green-600" },
-                  { label: "PIX",      v: pendenteSel.total_pix,      cls: "text-blue-600"  },
-                  { label: "Cartão",   v: pendenteSel.total_cartao,   cls: "text-purple-600"},
-                  { label: "Saídas",   v: pendenteSel.total_saidas,   cls: "text-red-600"   },
+                  { label: "Dinheiro", v: pendenteSel.total_dinheiro, cls: "text-foreground" },
+                  { label: "PIX",      v: pendenteSel.total_pix,      cls: "text-foreground" },
+                  { label: "Cartão",   v: pendenteSel.total_cartao,   cls: "text-foreground" },
+                  { label: "Saídas",   v: pendenteSel.total_saidas,   cls: "text-muted-foreground" },
                 ].map(({ label, v, cls }) => (
                   <div key={label} className="flex justify-between">
                     <span className="text-muted-foreground">{label}</span>
@@ -4186,12 +4746,9 @@ function CaixaTab({ isActive }: { isActive: boolean }) {
                 ))}
                 <div className="border-t border-border pt-2 flex justify-between font-semibold">
                   <span>Saldo final</span>
-                  <span className={pendenteSel.saldo_final >= 0 ? "text-foreground" : "text-red-600"}>
-                    {fmt(pendenteSel.saldo_final)}
-                  </span>
+                  <span className="text-foreground">{fmt(pendenteSel.saldo_final)}</span>
                 </div>
               </div>
-              {/* Motivo */}
               <div className="space-y-1.5">
                 <Label className="text-xs">Motivo do fechamento tardio <span className="text-muted-foreground">(recomendado)</span></Label>
                 <Input
@@ -4201,11 +4758,7 @@ function CaixaTab({ isActive }: { isActive: boolean }) {
                   disabled={fechandoPendente}
                 />
               </div>
-              <Button
-                className="w-full gap-2 bg-green-600 hover:bg-green-700"
-                onClick={confirmarFecharPendente}
-                disabled={fechandoPendente}
-              >
+              <Button className="w-full gap-2" onClick={confirmarFecharPendente} disabled={fechandoPendente}>
                 {fechandoPendente
                   ? <><RefreshCw className="h-4 w-4 animate-spin" />Fechando...</>
                   : <><LockKeyhole className="h-4 w-4" />Confirmar fechamento</>
@@ -4216,211 +4769,208 @@ function CaixaTab({ isActive }: { isActive: boolean }) {
         </DialogContent>
       </Dialog>
 
-      {/* ── Alerta: caixas não fechados ───────────────────────────────────── */}
-      {pendentes.length > 0 && (
-        <div className="bg-red-50 border border-red-300 rounded-xl overflow-hidden">
-          <div className="px-5 py-3 bg-red-100 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
-            <p className="font-semibold text-red-800 text-sm flex-1">
-              {pendentes.length === 1
-                ? "1 caixa não foi fechado no dia anterior"
-                : `${pendentes.length} caixas não foram fechados`}
-            </p>
-          </div>
-          <div className="p-4 space-y-2">
-            {pendentes.map(p => {
-              const ent = p.total_dinheiro + p.total_pix + p.total_cartao;
-              return (
-                <div key={p.id} className="flex items-center justify-between bg-white border border-red-200 rounded-lg px-4 py-2.5 gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold">{fmtData(p.data)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Entradas: {fmt(ent)} · Saldo: {fmt(p.saldo_final)}
-                    </p>
+      {/* ── Layout duas colunas ───────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+
+        {/* ── Coluna esquerda: Caixa de hoje ─────────────────────────────── */}
+        {caixaHoje && (
+          <div className="bg-background border border-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3 flex items-center justify-between bg-secondary">
+              <div className="flex items-center gap-2">
+                <Landmark className="h-4 w-4 text-foreground" />
+                <span className="font-semibold text-sm">Caixa de hoje — {fmtData(caixaHoje.data)}</span>
+              </div>
+              <span className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
+                isFechado ? "bg-foreground text-background" : "bg-background border border-border text-foreground"
+              }`}>
+                {isFechado ? <LockKeyhole className="h-3 w-3" /> : <LockKeyholeOpen className="h-3 w-3" />}
+                {isFechado ? "Fechado" : "Aberto"}
+              </span>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Saldo inicial */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">Saldo inicial (dinheiro em caixa)</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
+                    <Input
+                      type="number" min="0" step="0.01"
+                      className="pl-9"
+                      value={saldoInicial}
+                      onChange={e => setSaldoInicial(e.target.value)}
+                      placeholder="0,00"
+                      disabled={isFechado}
+                    />
                   </div>
-                  <Button
-                    size="sm" variant="outline"
-                    className="gap-1.5 border-red-300 text-red-700 hover:bg-red-50 shrink-0"
-                    onClick={() => abrirFecharPendente(p)}
-                  >
-                    <LockKeyhole className="h-3.5 w-3.5" />
-                    Revisar e fechar
-                  </Button>
                 </div>
-              );
-            })}
-            {pendentes.length > 1 && (
+                <Button variant="outline" size="sm" onClick={syncTotais} disabled={syncing || isFechado} className="gap-1.5 mt-6 shrink-0">
+                  <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+                  Sincronizar
+                </Button>
+              </div>
+
+              {/* Totais */}
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: "Dinheiro", value: caixaHoje.total_dinheiro, color: "text-foreground",       icon: Banknote },
+                  { label: "PIX",      value: caixaHoje.total_pix,      color: "text-foreground",       icon: Smartphone },
+                  { label: "Cartão",   value: caixaHoje.total_cartao,   color: "text-foreground",       icon: CreditCard },
+                  { label: "Saídas",   value: caixaHoje.total_saidas,   color: "text-muted-foreground", icon: ArrowDownCircle },
+                ].map(({ label, value, color, icon: Icon }) => (
+                  <div key={label} className="bg-secondary rounded-lg p-3 flex items-center gap-2">
+                    <Icon className={`h-4 w-4 shrink-0 ${color}`} />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
+                      <p className={`text-sm font-bold ${color}`}>{fmt(value)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Saldo final */}
+              <div className="border-t border-border pt-3 space-y-2">
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>Total vendas</span>
+                  <span className="font-medium text-foreground">{fmt(totalEntradas)}</span>
+                </div>
+                <div className="flex justify-between text-base font-bold">
+                  <span>Saldo final (caixa físico)</span>
+                  <span className="text-foreground">{fmt(caixaHoje.saldo_final)}</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Saldo final = Saldo inicial + Dinheiro - Saídas.
+                </p>
+              </div>
+
+              {/* Observações */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Observações do dia</Label>
+                <Input
+                  value={obs}
+                  onChange={e => setObs(e.target.value)}
+                  placeholder="Qualquer anotação do dia..."
+                  disabled={isFechado}
+                />
+              </div>
+
+              {/* Fechar/Abrir */}
               <Button
-                size="sm" variant="outline"
-                className="w-full gap-1.5 text-red-700 border-red-300 hover:bg-red-50 mt-1"
-                onClick={fecharTodosPendentes}
-                disabled={fechandoPendente}
+                className="w-full gap-2"
+                variant={isFechado ? "outline" : "default"}
+                onClick={fecharCaixa}
+                disabled={saving}
               >
-                {fechandoPendente
-                  ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Fechando...</>
-                  : <><LockKeyhole className="h-3.5 w-3.5" />Fechar todos de uma vez</>
+                {saving
+                  ? <><RefreshCw className="h-4 w-4 animate-spin" />Salvando...</>
+                  : isFechado
+                  ? <><LockKeyholeOpen className="h-4 w-4" />Reabrir caixa</>
+                  : <><LockKeyhole className="h-4 w-4" />Fechar caixa do dia</>
                 }
               </Button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Caixa de hoje */}
-      {caixaHoje && (
-        <div className={`bg-background border rounded-xl overflow-hidden ${isFechado ? "border-green-300" : "border-border"}`}>
-          {/* Header */}
-          <div className={`px-5 py-3 flex items-center justify-between ${isFechado ? "bg-green-50" : "bg-secondary"}`}>
-            <div className="flex items-center gap-2">
-              <Landmark className="h-4 w-4 text-primary" />
-              <span className="font-semibold text-sm">Caixa de hoje — {fmtData(caixaHoje.data)}</span>
             </div>
-            <span className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
-              isFechado ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-            }`}>
-              {isFechado ? <LockKeyhole className="h-3 w-3" /> : <LockKeyholeOpen className="h-3 w-3" />}
-              {isFechado ? "Fechado" : "Aberto"}
-            </span>
           </div>
+        )}
 
-          <div className="p-5 space-y-4">
-            {/* Saldo inicial */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1 space-y-1">
-                <Label className="text-xs">Saldo inicial (dinheiro em caixa)</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
-                  <Input
-                    type="number" min="0" step="0.01"
-                    className="pl-9"
-                    value={saldoInicial}
-                    onChange={e => setSaldoInicial(e.target.value)}
-                    placeholder="0,00"
-                    disabled={isFechado}
-                  />
-                </div>
+        {/* ── Coluna direita ──────────────────────────────────────────────── */}
+        <div className="space-y-5">
+
+          {/* Histórico de fechamentos (max 3) */}
+          {historico.length > 0 && (
+            <div className="bg-background border border-border rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+                <p className="text-sm font-semibold">Histórico de fechamentos</p>
+                {historico.length > 3 && (
+                  <button
+                    onClick={() => setVerTodosHist(v => !v)}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {verTodosHist ? "Ver menos" : `Ver todos (${historico.length})`}
+                  </button>
+                )}
               </div>
-              <Button variant="outline" size="sm" onClick={syncTotais} disabled={syncing || isFechado} className="gap-1.5 mt-6 shrink-0">
-                <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
-                Sincronizar
-              </Button>
-            </div>
-
-            {/* Totais */}
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: "Dinheiro", value: caixaHoje.total_dinheiro, color: "text-green-600", icon: Banknote },
-                { label: "PIX",      value: caixaHoje.total_pix,      color: "text-blue-600",  icon: Smartphone },
-                { label: "Cartão",   value: caixaHoje.total_cartao,   color: "text-purple-600",icon: CreditCard },
-                { label: "Saídas",   value: caixaHoje.total_saidas,   color: "text-red-600",   icon: ArrowDownCircle },
-              ].map(({ label, value, color, icon: Icon }) => (
-                <div key={label} className="bg-secondary rounded-lg p-3 flex items-center gap-2">
-                  <Icon className={`h-4 w-4 shrink-0 ${color}`} />
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
-                    <p className={`text-sm font-bold ${color}`}>{fmt(value)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Total entradas + saldo final */}
-            <div className="border-t border-border pt-3 space-y-2">
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>Total vendas</span>
-                <span className="font-medium text-foreground">{fmt(totalEntradas)}</span>
-              </div>
-              <div className="flex justify-between text-base font-bold">
-                <span>Saldo final (caixa físico)</span>
-                <span className={caixaHoje.saldo_final >= 0 ? "text-green-600" : "text-red-600"}>
-                  {fmt(caixaHoje.saldo_final)}
-                </span>
-              </div>
-              <p className="text-[10px] text-muted-foreground">
-                Saldo final = Saldo inicial + Dinheiro - Saídas. Clique em "Sincronizar" para recalcular com os pedidos do dia.
-              </p>
-            </div>
-
-            {/* Observações */}
-            <div className="space-y-1.5">
-              <Label className="text-xs">Observações do dia</Label>
-              <Input
-                value={obs}
-                onChange={e => setObs(e.target.value)}
-                placeholder="Qualquer anotação do dia..."
-                disabled={isFechado}
-              />
-            </div>
-
-            {/* Fechar/Abrir */}
-            <Button
-              className={`w-full gap-2 ${isFechado ? "" : "bg-green-600 hover:bg-green-700"}`}
-              variant={isFechado ? "outline" : "default"}
-              onClick={fecharCaixa}
-              disabled={saving}
-            >
-              {saving
-                ? <><RefreshCw className="h-4 w-4 animate-spin" />Salvando...</>
-                : isFechado
-                ? <><LockKeyholeOpen className="h-4 w-4" />Reabrir caixa</>
-                : <><LockKeyhole className="h-4 w-4" />Fechar caixa do dia</>
-              }
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Histórico */}
-      {historico.length > 0 && (
-        <div className="bg-background border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-3 border-b border-border">
-            <p className="text-sm font-semibold">Histórico de fechamentos</p>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Data</TableHead>
-                <TableHead className="text-right hidden sm:table-cell">Entradas</TableHead>
-                <TableHead className="text-right hidden sm:table-cell">Saídas</TableHead>
-                <TableHead className="text-right">Saldo final</TableHead>
-                <TableHead className="text-center">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {historico.map(h => {
-                const entradas = h.total_dinheiro + h.total_pix + h.total_cartao;
-                return (
-                  <TableRow key={h.id}>
-                    <TableCell className="font-medium text-sm">{fmtData(h.data)}</TableCell>
-                    <TableCell className="text-right text-xs text-green-600 hidden sm:table-cell">{fmt(entradas)}</TableCell>
-                    <TableCell className="text-right text-xs text-red-600 hidden sm:table-cell">{fmt(h.total_saidas)}</TableCell>
-                    <TableCell className={`text-right font-semibold text-sm ${h.saldo_final >= 0 ? "text-foreground" : "text-red-600"}`}>
-                      {fmt(h.saldo_final)}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {h.status === "fechado" ? (
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                          Fechado
-                        </span>
-                      ) : (
-                        <Button
-                          size="sm" variant="outline"
-                          className="h-7 gap-1 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
-                          onClick={() => abrirFecharPendente(h)}
-                        >
-                          <LockKeyhole className="h-3 w-3" />
-                          Fechar
-                        </Button>
-                      )}
-                    </TableCell>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead className="text-right">Saldo</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                </TableHeader>
+                <TableBody>
+                  {historicoVis.map(h => {
+                    const entradas = h.total_dinheiro + h.total_pix + h.total_cartao;
+                    return (
+                      <TableRow key={h.id}>
+                        <TableCell>
+                          <p className="font-medium text-sm">{fmtData(h.data)}</p>
+                          <p className="text-[10px] text-muted-foreground">Vendas: {fmt(entradas)}</p>
+                        </TableCell>
+                        <TableCell className="text-right font-semibold text-sm">{fmt(h.saldo_final)}</TableCell>
+                        <TableCell className="text-center">
+                          {h.status === "fechado" ? (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-foreground text-background">
+                              Fechado
+                            </span>
+                          ) : (
+                            <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => abrirFecharPendente(h)}>
+                              <LockKeyhole className="h-3 w-3" />Fechar
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {/* Caixas não fechados */}
+          {pendentes.length > 0 && (
+            <div className="bg-background border border-border rounded-xl overflow-hidden">
+              <div className="px-5 py-3 bg-secondary flex items-center gap-2 border-b border-border">
+                <AlertTriangle className="h-4 w-4 text-foreground shrink-0" />
+                <p className="font-semibold text-foreground text-sm flex-1">
+                  {pendentes.length === 1
+                    ? "1 caixa não foi fechado"
+                    : `${pendentes.length} caixas não foram fechados`}
+                </p>
+              </div>
+              <div className="p-4 space-y-2">
+                {pendentes.map(p => {
+                  const ent = p.total_dinheiro + p.total_pix + p.total_cartao;
+                  return (
+                    <div key={p.id} className="flex items-center justify-between bg-secondary border border-border rounded-lg px-4 py-2.5 gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold">{fmtData(p.data)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Entradas: {fmt(ent)} · Saldo: {fmt(p.saldo_final)}
+                        </p>
+                      </div>
+                      <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={() => abrirFecharPendente(p)}>
+                        <LockKeyhole className="h-3.5 w-3.5" />
+                        Fechar
+                      </Button>
+                    </div>
+                  );
+                })}
+                {pendentes.length > 1 && (
+                  <Button size="sm" variant="outline" className="w-full gap-1.5 mt-1" onClick={fecharTodosPendentes} disabled={fechandoPendente}>
+                    {fechandoPendente
+                      ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Fechando...</>
+                      : <><LockKeyhole className="h-3.5 w-3.5" />Fechar todos de uma vez</>
+                    }
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -4628,7 +5178,7 @@ function RelatoriosTab({ isActive }: { isActive: boolean }) {
             <button key={o.key} onClick={() => setPeriod(o.key)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 period === o.key
-                  ? "bg-primary text-primary-foreground"
+                  ? "bg-foreground text-background"
                   : "bg-background border border-border text-muted-foreground hover:text-foreground"
               }`}>
               {o.label}
@@ -4679,10 +5229,10 @@ function RelatoriosTab({ isActive }: { isActive: boolean }) {
       {/* Cards resumo */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: "Faturamento",   value: fmt(faturamento),            icon: TrendingUp,  color: "text-green-600",  bg: "bg-green-50"  },
-          { label: "Pedidos",       value: String(pedidosPeriod.length), icon: ShoppingBag, color: "text-blue-600",   bg: "bg-blue-50"   },
-          { label: "Ticket medio",  value: fmt(ticketMedio),             icon: BarChart2,   color: "text-purple-600", bg: "bg-purple-50" },
-          { label: "Itens vendidos",value: String(totalItens),           icon: Package,     color: "text-orange-600", bg: "bg-orange-50" },
+          { label: "Faturamento",   value: fmt(faturamento),            icon: TrendingUp,  color: "text-foreground", bg: "bg-secondary" },
+          { label: "Pedidos",       value: String(pedidosPeriod.length), icon: ShoppingBag, color: "text-foreground", bg: "bg-secondary" },
+          { label: "Ticket medio",  value: fmt(ticketMedio),             icon: BarChart2,   color: "text-foreground", bg: "bg-secondary" },
+          { label: "Itens vendidos",value: String(totalItens),           icon: Package,     color: "text-foreground", bg: "bg-secondary" },
         ].map(m => {
           const Icon = m.icon;
           return (
@@ -4898,7 +5448,7 @@ function MetasTab({ isActive }: { isActive: boolean }) {
       <div className="h-2.5 bg-secondary rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-500 ${
-            done ? "bg-green-500" : value >= 70 ? "bg-primary" : value >= 40 ? "bg-amber-500" : "bg-red-400"
+            done ? "bg-foreground" : value >= 70 ? "bg-foreground/70" : value >= 40 ? "bg-foreground/45" : "bg-foreground/25"
           }`}
           style={{ width: `${value}%` }}
         />
@@ -4937,13 +5487,13 @@ function MetasTab({ isActive }: { isActive: boolean }) {
                     {meta?.meta_faturamento ? `meta: ${fmt(meta.meta_faturamento)}` : "Meta nao definida"}
                   </p>
                 </div>
-                <span className={`text-sm font-bold shrink-0 mt-1 ${pctFaturamento >= 100 ? "text-green-600" : "text-primary"}`}>
+                <span className="text-sm font-bold shrink-0 mt-1 text-foreground">
                   {meta?.meta_faturamento ? `${pctFaturamento}%` : "--"}
                 </span>
               </div>
               <ProgressBar value={pctFaturamento} done={pctFaturamento >= 100} />
               {pctFaturamento >= 100 && (
-                <p className="text-xs font-semibold text-green-600">Meta atingida!</p>
+                <p className="text-xs font-semibold text-foreground">Meta atingida!</p>
               )}
             </div>
 
@@ -4957,13 +5507,13 @@ function MetasTab({ isActive }: { isActive: boolean }) {
                     {meta?.meta_pedidos ? `meta: ${meta.meta_pedidos} pedidos` : "Meta nao definida"}
                   </p>
                 </div>
-                <span className={`text-sm font-bold shrink-0 mt-1 ${pctPedidos >= 100 ? "text-green-600" : "text-primary"}`}>
+                <span className="text-sm font-bold shrink-0 mt-1 text-foreground">
                   {meta?.meta_pedidos ? `${pctPedidos}%` : "--"}
                 </span>
               </div>
               <ProgressBar value={pctPedidos} done={pctPedidos >= 100} />
               {pctPedidos >= 100 && (
-                <p className="text-xs font-semibold text-green-600">Meta atingida!</p>
+                <p className="text-xs font-semibold text-foreground">Meta atingida!</p>
               )}
             </div>
           </div>
@@ -5131,7 +5681,7 @@ function CuponsTab({ isActive }: { isActive: boolean }) {
                   </TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
-                      c.tipo === "percentual" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
+                      "bg-secondary text-foreground"
                     }`}>
                       {c.tipo === "percentual" ? <BadgePercent className="h-3 w-3" /> : <DollarSign className="h-3 w-3" />}
                       {c.tipo === "percentual" ? `${c.valor}%` : `R$${c.valor.toFixed(2).replace(".",",")}`}
@@ -5150,7 +5700,7 @@ function CuponsTab({ isActive }: { isActive: boolean }) {
                     <Switch checked={c.ativo} onCheckedChange={() => handleToggle(c)} />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive"
+                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground"
                       onClick={() => setDelId(c.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -5177,7 +5727,7 @@ function CuponsTab({ isActive }: { isActive: boolean }) {
                 {(["percentual","fixo"] as const).map(t => (
                   <button key={t} onClick={() => setTipo(t)}
                     className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      tipo === t ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground"
+                      tipo === t ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground"
                     }`}>
                     {t === "percentual" ? "Porcentagem (%)" : "Valor fixo (R$)"}
                   </button>
@@ -5317,9 +5867,9 @@ function ContasTab({ isActive }: { isActive: boolean }) {
   const saldo         = totalReceber - totalPagar;
 
   const STATUS_BADGE: Record<string, string> = {
-    pendente: "bg-amber-100 text-amber-700",
-    pago:     "bg-green-100 text-green-700",
-    vencido:  "bg-red-100 text-red-700",
+    pendente: "bg-secondary text-foreground",
+    pago:     "bg-foreground text-background",
+    vencido:  "bg-secondary text-muted-foreground border border-border",
   };
   const STATUS_LABEL_C: Record<string, string> = { pendente: "Pendente", pago: "Pago", vencido: "Vencida" };
 
@@ -5338,10 +5888,10 @@ function ContasTab({ isActive }: { isActive: boolean }) {
       {/* Cards resumo */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: "A pagar",  value: fmt(totalPagar),   color: "text-red-600",   bg: "bg-red-50",    icon: TrendingDown  },
-          { label: "A receber",value: fmt(totalReceber), color: "text-green-600", bg: "bg-green-50",  icon: TrendingUp    },
-          { label: "Vencidas", value: String(totalVencidas), color: totalVencidas > 0 ? "text-red-600" : "text-gray-400", bg: totalVencidas > 0 ? "bg-red-50" : "bg-gray-50", icon: CalendarClock },
-          { label: "Saldo prev.",value: fmt(saldo),      color: saldo >= 0 ? "text-green-600" : "text-red-600", bg: saldo >= 0 ? "bg-green-50" : "bg-red-50", icon: BarChart2 },
+          { label: "A pagar",    value: fmt(totalPagar),       color: "text-foreground", bg: "bg-secondary", icon: TrendingDown  },
+          { label: "A receber",  value: fmt(totalReceber),     color: "text-foreground", bg: "bg-secondary", icon: TrendingUp    },
+          { label: "Vencidas",   value: String(totalVencidas), color: "text-foreground", bg: "bg-secondary", icon: CalendarClock },
+          { label: "Saldo prev.",value: fmt(saldo),            color: "text-foreground", bg: "bg-secondary", icon: BarChart2     },
         ].map(m => {
           const Icon = m.icon;
           return (
@@ -5363,12 +5913,12 @@ function ContasTab({ isActive }: { isActive: boolean }) {
             <button key={f.key} onClick={() => setFiltro(f.key)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 filtro === f.key
-                  ? "bg-primary text-primary-foreground"
+                  ? "bg-foreground text-background"
                   : "bg-background border border-border text-muted-foreground hover:text-foreground"
               }`}>
               {f.label}
               {f.key === "vencidas" && totalVencidas > 0 && (
-                <span className="ml-1.5 bg-red-500 text-white text-[10px] font-bold px-1 rounded-full">{totalVencidas}</span>
+                <span className="ml-1.5 bg-foreground text-background text-[10px] font-bold px-1 rounded-full">{totalVencidas}</span>
               )}
             </button>
           ))}
@@ -5408,7 +5958,7 @@ function ContasTab({ isActive }: { isActive: boolean }) {
                 <TableRow key={c.id}>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.tipo === "pagar" ? "bg-red-500" : "bg-green-500"}`} />
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-foreground/40" />
                       <div>
                         <p className="font-medium text-sm">{c.descricao}</p>
                         <p className="text-xs text-muted-foreground">{c.tipo === "pagar" ? "A pagar" : "A receber"}</p>
@@ -5417,7 +5967,7 @@ function ContasTab({ isActive }: { isActive: boolean }) {
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground hidden sm:table-cell">{c.categoria}</TableCell>
                   <TableCell>
-                    <span className={`font-semibold text-sm ${c.tipo === "pagar" ? "text-red-600" : "text-green-600"}`}>
+                    <span className="font-semibold text-sm text-foreground">
                       {c.tipo === "pagar" ? "-" : "+"}{fmt(Number(c.valor))}
                     </span>
                   </TableCell>
@@ -5435,9 +5985,9 @@ function ContasTab({ isActive }: { isActive: boolean }) {
                         title={c.status === "pago" ? "Marcar como pendente" : "Marcar como pago"}>
                         {c.status === "pago"
                           ? <Ban className="h-4 w-4 text-muted-foreground" />
-                          : <BadgeCheck className="h-4 w-4 text-green-600" />}
+                          : <BadgeCheck className="h-4 w-4 text-foreground" />}
                       </Button>
-                      <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive"
+                      <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground"
                         onClick={() => setDelId(c.id)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -5461,7 +6011,7 @@ function ContasTab({ isActive }: { isActive: boolean }) {
                 {(["pagar","receber"] as const).map(t => (
                   <button key={t} onClick={() => { setTipo(t); setCateg(""); }}
                     className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      tipo === t ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground"
+                      tipo === t ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground"
                     }`}>
                     {t === "pagar" ? "Conta a pagar" : "Conta a receber"}
                   </button>
@@ -5551,7 +6101,7 @@ function ConfigTab({ isActive }: { isActive: boolean }) {
       {/* ── Taxa de cartão ── */}
       <div className="bg-background border border-border rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-          <SlidersHorizontal className="h-4 w-4 text-primary" />
+          <SlidersHorizontal className="h-4 w-4 text-foreground" />
           <h3 className="font-semibold text-sm">Taxa de cartão de crédito</h3>
         </div>
         <div className="p-5 space-y-5">
@@ -5625,11 +6175,11 @@ function ConfigTab({ isActive }: { isActive: boolean }) {
                           </td>
                           <td className="px-3 py-2 text-right">
                             {p.temJuros ? (
-                              <span className="text-amber-600 font-medium">
+                              <span className="text-muted-foreground font-medium">
                                 +{((p.totalFinal - 100) / 100 * 100).toFixed(1)}%
                               </span>
                             ) : (
-                              <span className="text-green-600 font-medium">Sem juros</span>
+                              <span className="text-foreground font-medium">Sem juros</span>
                             )}
                           </td>
                         </tr>
@@ -5748,7 +6298,7 @@ function ComissoesTab({ isActive }: { isActive: boolean }) {
           </button>
         </div>
         <div className="bg-background border border-border rounded-xl px-4 py-2.5 text-sm flex items-center gap-2">
-          <Award className="h-4 w-4 text-yellow-500" />
+          <Award className="h-4 w-4 text-foreground" />
           <span className="text-muted-foreground">Total de comissoes:</span>
           <span className="font-bold">{fmt(totalComissoes)}</span>
         </div>
@@ -5807,7 +6357,7 @@ function ComissoesTab({ isActive }: { isActive: boolean }) {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <span className={`font-bold text-sm ${valorComissao > 0 ? "text-green-600" : "text-muted-foreground"}`}>
+                      <span className={`font-bold text-sm ${valorComissao > 0 ? "text-foreground" : "text-muted-foreground"}`}>
                         {fmt(valorComissao)}
                       </span>
                     </TableCell>
@@ -5969,32 +6519,32 @@ function ColaboradorDashboard({ userRole, email }: { userRole: UserRole; email: 
         value: String(pedidosHoje.length),
         sub:   `${pedidosMes.length} no mês`,
         icon:  ShoppingBag,
-        color: "text-blue-600",
-        bg:    "bg-blue-50",
+        color: "text-foreground",
+        bg:    "bg-secondary",
       },
       {
         label: "Receita hoje",
         value: fmt(receitaHoje),
         sub:   "••••• no mês",
         icon:  TrendingUp,
-        color: "text-green-600",
-        bg:    "bg-green-50",
+        color: "text-foreground",
+        bg:    "bg-secondary",
       },
       {
         label: "Aguardando pagto.",
         value: String(pendentes.length),
         sub:   pendentes.length > 0 ? "Requerem atenção" : "Tudo em dia",
         icon:  AlertCircle,
-        color: pendentes.length > 0 ? "text-amber-600" : "text-gray-400",
-        bg:    pendentes.length > 0 ? "bg-amber-50"    : "bg-gray-50",
+        color: "text-foreground",
+        bg:    "bg-secondary",
       },
       {
         label: "Total de pedidos",
         value: String(orders.length),
         sub:   "Desde o início",
         icon:  BarChart2,
-        color: "text-purple-600",
-        bg:    "bg-purple-50",
+        color: "text-foreground",
+        bg:    "bg-secondary",
       },
     ];
 
@@ -6027,7 +6577,7 @@ function ColaboradorDashboard({ userRole, email }: { userRole: UserRole; email: 
               {abasDisponiveis.some(a => a.id === "pedidos") && (
                 <button
                   onClick={() => setActiveTab("pedidos")}
-                  className="text-xs text-primary hover:underline"
+                  className="text-xs text-foreground hover:underline"
                 >
                   Ver todos
                 </button>
@@ -6078,8 +6628,8 @@ function ColaboradorDashboard({ userRole, email }: { userRole: UserRole; email: 
                       onClick={() => setActiveTab(aba.id)}
                       className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-secondary transition-colors text-left group"
                     >
-                      <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
-                        <Icon className="h-4 w-4 text-primary" />
+                      <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-secondary group-hover:bg-foreground/20 transition-colors">
+                        <Icon className="h-4 w-4 text-foreground" />
                       </div>
                       <span className="text-sm font-medium">{aba.label}</span>
                       <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto" />
@@ -6095,7 +6645,19 @@ function ColaboradorDashboard({ userRole, email }: { userRole: UserRole; email: 
     );
   }
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen,    setSidebarOpen]    = useState(false);
+  const [sidebarMounted, setSidebarMounted] = useState(false);
+  const [sidebarShown,   setSidebarShown]   = useState(false);
+
+  useEffect(() => {
+    if (sidebarOpen) {
+      setSidebarMounted(true);
+      const t = setTimeout(() => setSidebarShown(true), 10);
+      return () => clearTimeout(t);
+    } else {
+      setSidebarShown(false);
+    }
+  }, [sidebarOpen]);
 
   // Todos os itens de navegação (início + abas liberadas)
   const navItems = [
@@ -6135,56 +6697,63 @@ function ColaboradorDashboard({ userRole, email }: { userRole: UserRole; email: 
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen overflow-hidden bg-gray-50 flex flex-col">
 
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <header className="bg-gray-950 border-b border-gray-800 sticky top-0 z-20">
-        <div className="flex items-center justify-between px-4 py-3 gap-3">
-          <div className="flex items-center gap-3">
-            <button
-              className="lg:hidden p-1.5 rounded-lg hover:bg-gray-800 transition-colors text-gray-300"
-              onClick={() => setSidebarOpen(o => !o)}
-              aria-label="Menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-lg font-black text-white tracking-tight">{STORE_NAME}</span>
-              <span className="ml-1 hidden sm:inline-flex text-[10px] font-bold bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full uppercase tracking-widest">Colaborador</span>
+      {/* ── Header via portal (escapa o transform do AnimatedRoutes) ─── */}
+      {createPortal(
+        <header className="bg-gray-950 border-b border-gray-800 fixed top-0 left-0 right-0 z-[55]">
+          <div className="flex items-center justify-between px-4 py-3 gap-3">
+            <div className="flex items-center gap-3">
+              <button
+                className="lg:hidden p-1.5 rounded-lg hover:bg-gray-800 transition-colors text-gray-300"
+                onClick={() => setSidebarOpen(o => !o)}
+                aria-label="Menu"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-lg font-black text-white tracking-tight">{STORE_NAME}</span>
+                <span className="ml-1 hidden sm:inline-flex text-[10px] font-bold bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full uppercase tracking-widest">Colaborador</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-400 hidden sm:inline truncate max-w-[180px]">{email}</span>
+              <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} className="gap-1.5 text-gray-300 hover:text-white hover:bg-gray-800">
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline">Sair</span>
+              </Button>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-400 hidden sm:inline truncate max-w-[180px]">{email}</span>
-            <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} className="gap-1.5 text-gray-300 hover:text-white hover:bg-gray-800">
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Sair</span>
-            </Button>
-          </div>
-        </div>
-      </header>
+        </header>,
+        document.body
+      )}
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 overflow-hidden pt-[57px]">
 
         {/* ── Sidebar desktop ─────────────────────────────────────────── */}
-        <aside className="hidden lg:block w-52 shrink-0 bg-gray-950 border-r border-gray-800 sticky top-[57px] self-start h-[calc(100vh-57px)] overflow-y-auto">
+        <aside className="hidden lg:flex lg:flex-col w-52 shrink-0 bg-gray-950 border-r border-gray-800 overflow-y-auto">
           <SidebarNav />
         </aside>
 
         {/* ── Sidebar mobile overlay ──────────────────────────────────── */}
-        {sidebarOpen && (
+        {sidebarMounted && createPortal(
           <>
             <div
-              className="fixed inset-0 bg-black/60 z-30 lg:hidden"
+              className={`fixed inset-0 bg-black/60 z-[60] lg:hidden transition-opacity duration-300 ${sidebarShown ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
               onClick={() => setSidebarOpen(false)}
             />
-            <aside className="fixed left-0 top-[57px] bottom-0 w-52 bg-gray-950 border-r border-gray-800 z-40 overflow-y-auto lg:hidden">
+            <aside
+              className={`fixed left-0 top-0 bottom-0 w-64 bg-gray-950 border-r border-gray-800 z-[61] overflow-y-auto lg:hidden transition-transform duration-300 ease-in-out ${sidebarShown ? "translate-x-0" : "-translate-x-full"}`}
+              onTransitionEnd={() => { if (!sidebarOpen) setSidebarMounted(false); }}
+            >
               <SidebarNav />
             </aside>
-          </>
+          </>,
+          document.body
         )}
 
         {/* ── Conteúdo principal ─────────────────────────────────────── */}
-        <main className="flex-1 min-w-0 p-4 md:p-6 overflow-x-hidden">
+        <main className="flex-1 min-w-0 p-4 md:p-6 overflow-y-auto overflow-x-hidden">
           {activeTab !== "inicio" && heading.title && (
             <div className="mb-6">
               <h2 className="text-xl font-bold">{heading.title}</h2>
@@ -6209,7 +6778,19 @@ function ColaboradorDashboard({ userRole, email }: { userRole: UserRole; email: 
 // ─── Dashboard principal ──────────────────────────────────────────────────────
 function AdminDashboard({ userRole }: { userRole: UserRole | null }) {
   const [activeTab,    setActiveTab]    = useState("dashboard");
-  const [sidebarOpen,  setSidebarOpen]  = useState(false);
+  const [sidebarOpen,    setSidebarOpen]    = useState(false);
+  const [sidebarMounted, setSidebarMounted] = useState(false);
+  const [sidebarShown,   setSidebarShown]   = useState(false);
+
+  useEffect(() => {
+    if (sidebarOpen) {
+      setSidebarMounted(true);
+      const t = setTimeout(() => setSidebarShown(true), 10);
+      return () => clearTimeout(t);
+    } else {
+      setSidebarShown(false);
+    }
+  }, [sidebarOpen]);
 
   // null = sem registro no banco = admin original (retrocompat)
   const isAdmin      = !userRole || userRole.role === "admin";
@@ -6279,65 +6860,72 @@ function AdminDashboard({ userRole }: { userRole: UserRole | null }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen overflow-hidden bg-gray-50 flex flex-col">
 
-      {/* ── Header ─────────────────────────────────────────────────── */}
-      <header className="bg-gray-950 border-b border-gray-800 sticky top-0 z-20">
-        <div className="flex items-center justify-between px-4 py-3 gap-3">
-          <div className="flex items-center gap-3">
-            {/* Hamburger — apenas mobile */}
-            <button
-              className="lg:hidden p-1.5 rounded-lg hover:bg-gray-800 transition-colors text-gray-300"
-              onClick={() => setSidebarOpen(o => !o)}
-              aria-label="Menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-lg font-black text-white tracking-tight">{STORE_NAME}</span>
-              <span className="ml-1 hidden sm:inline-flex text-[10px] font-bold bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full uppercase tracking-widest">Admin</span>
+      {/* ── Header via portal (escapa o transform do AnimatedRoutes) ─── */}
+      {createPortal(
+        <header className="bg-gray-950 border-b border-gray-800 fixed top-0 left-0 right-0 z-[55]">
+          <div className="flex items-center justify-between px-4 py-3 gap-3">
+            <div className="flex items-center gap-3">
+              {/* Hamburger — apenas mobile */}
+              <button
+                className="lg:hidden p-1.5 rounded-lg hover:bg-gray-800 transition-colors text-gray-300"
+                onClick={() => setSidebarOpen(o => !o)}
+                aria-label="Menu"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-lg font-black text-white tracking-tight">{STORE_NAME}</span>
+                <span className="ml-1 hidden sm:inline-flex text-[10px] font-bold bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full uppercase tracking-widest">Admin</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="gap-1.5 border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white bg-transparent" onClick={() => window.open("/", "_blank")}>
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Ver loja</span>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} className="gap-1.5 text-gray-300 hover:text-white hover:bg-gray-800">
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline">Sair</span>
+              </Button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5 border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white bg-transparent" onClick={() => window.open("/", "_blank")}>
-              <ExternalLink className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Ver loja</span>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} className="gap-1.5 text-gray-300 hover:text-white hover:bg-gray-800">
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Sair</span>
-            </Button>
-          </div>
-        </div>
-      </header>
+        </header>,
+        document.body
+      )}
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 overflow-hidden pt-[57px]">
 
         {/* ── Sidebar desktop ─────────────────────────────────────────── */}
-        <aside className="hidden lg:block w-52 shrink-0 bg-gray-950 border-r border-gray-800 sticky top-[57px] self-start h-[calc(100vh-57px)] overflow-y-auto">
+        <aside className="hidden lg:flex lg:flex-col w-52 shrink-0 bg-gray-950 border-r border-gray-800 overflow-y-auto">
           <SidebarNav />
         </aside>
 
         {/* ── Sidebar mobile overlay ──────────────────────────────────── */}
-        {sidebarOpen && (
+        {sidebarMounted && createPortal(
           <>
             <div
-              className="fixed inset-0 bg-black/60 z-30 lg:hidden"
+              className={`fixed inset-0 bg-black/60 z-[60] lg:hidden transition-opacity duration-300 ${sidebarShown ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
               onClick={() => setSidebarOpen(false)}
             />
-            <aside className="fixed left-0 top-[57px] bottom-0 w-52 bg-gray-950 border-r border-gray-800 z-40 overflow-y-auto lg:hidden">
+            <aside
+              className={`fixed left-0 top-0 bottom-0 w-64 bg-gray-950 border-r border-gray-800 z-[61] overflow-y-auto lg:hidden pb-20 transition-transform duration-300 ease-in-out ${sidebarShown ? "translate-x-0" : "-translate-x-full"}`}
+              onTransitionEnd={() => { if (!sidebarOpen) setSidebarMounted(false); }}
+            >
               <SidebarNav />
             </aside>
-          </>
+          </>,
+          document.body
         )}
 
         {/* ── Conteúdo principal ─────────────────────────────────────── */}
-        <main className="flex-1 min-w-0 p-4 md:p-6 overflow-x-hidden">
+        <main className="flex-1 min-w-0 p-3 md:p-6 pb-20 lg:pb-6 overflow-y-auto overflow-x-hidden">
 
           {/* Cabeçalho da página */}
-          <div className="mb-6">
-            <h2 className="text-xl font-bold">{heading.title}</h2>
-            <p className="text-sm text-muted-foreground">{heading.sub}</p>
+          <div className="mb-4 md:mb-6">
+            <h2 className="text-base md:text-xl font-bold">{heading.title}</h2>
+            <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">{heading.sub}</p>
           </div>
 
           {activeTab === "dashboard" && <DashboardTab   isActive={activeTab === "dashboard"} />}
@@ -6360,6 +6948,47 @@ function AdminDashboard({ userRole }: { userRole: UserRole | null }) {
           {activeTab === "fornecedores"  && <FornecedoresTab   isActive={activeTab === "fornecedores"}  />}
         </main>
       </div>
+
+      {/* ── Bottom Nav mobile ───────────────────────────────────────── */}
+      {(() => {
+        const PRIORITY = ["pdv", "pedidos", "produtos", "dashboard", "caixa"];
+        const allIds = navGroupsFiltrados.flatMap(g => g.items.map(i => i.id));
+        const bottomItems = PRIORITY
+          .filter(id => allIds.includes(id))
+          .slice(0, 4)
+          .map(id => {
+            const item = navGroupsFiltrados.flatMap(g => g.items).find(i => i.id === id)!;
+            return item;
+          });
+        return (
+          <nav className="fixed bottom-0 left-0 right-0 z-20 bg-gray-950 border-t border-gray-800 flex lg:hidden">
+            {bottomItems.map(item => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors ${
+                    isActive ? "text-white" : "text-gray-500"
+                  }`}
+                >
+                  <Icon className={`h-5 w-5 ${isActive ? "text-white" : ""}`} />
+                  <span className="text-[10px] font-medium">{item.label}</span>
+                </button>
+              );
+            })}
+            {/* Mais (abre sidebar) */}
+            <button
+              onClick={() => setSidebarOpen(o => !o)}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-gray-500 transition-colors"
+            >
+              <Menu className="h-5 w-5" />
+              <span className="text-[10px] font-medium">Mais</span>
+            </button>
+          </nav>
+        );
+      })()}
     </div>
   );
 }

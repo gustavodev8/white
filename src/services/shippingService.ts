@@ -8,7 +8,8 @@
 // ─── Configuracao da loja (ajustar por cliente) ───────────────────────────────
 export const ORIGIN_CITY             = "Alagoinhas"; // Cidade de origem da loja
 export const ORIGIN_STATE            = "BA";          // Estado de origem da loja
-export const FREE_SHIPPING_THRESHOLD = 120;           // Frete gratis acima deste valor (R$)
+export const FREE_SHIPPING_THRESHOLD = Infinity;      // Infinity = sem frete grátis automático
+export const ALAGOINHAS_SHIPPING     = 8;             // Frete local para Alagoinhas (R$)
 
 // ─── Tabela de fretes por estado (R$) ────────────────────────────────────────
 // Origem: Bahia (CEP 48021-555)
@@ -38,12 +39,19 @@ const DEFAULT_RATE = 30;
 
 // ─── Funcoes exportadas ───────────────────────────────────────────────────────
 
+/** Verifica se a cidade é Alagoinhas (origem da loja). */
+export function isAlagoinhasCity(city: string): boolean {
+  return city.trim().toLowerCase() === ORIGIN_CITY.toLowerCase();
+}
+
 /**
  * Retorna o custo de frete em reais.
  * 0 = frete gratis (por threshold ou estado nao selecionado).
+ * Para Alagoinhas usa tarifa local (ALAGOINHAS_SHIPPING).
  */
-export function calculateShipping(uf: string, subtotal: number): number {
+export function calculateShipping(uf: string, subtotal: number, city = ""): number {
   if (!uf) return 0;
+  if (isAlagoinhasCity(city)) return ALAGOINHAS_SHIPPING;
   if (subtotal >= FREE_SHIPPING_THRESHOLD) return 0;
   return SHIPPING_RATES[uf.toUpperCase()] ?? DEFAULT_RATE;
 }

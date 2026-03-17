@@ -27,6 +27,8 @@ export default function CollectionPage() {
     ? slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ")
     : "Coleção";
 
+  useEffect(() => { window.scrollTo(0, 0); }, [slug]);
+
   useEffect(() => {
     if (!slug) return;
     setLoading(true);

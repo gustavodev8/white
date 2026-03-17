@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation, useNavigate, Link } from "react-router-dom";
-import { ChevronRight, ShoppingCart, Minus, Plus, Truck, RotateCcw, Shield } from "lucide-react";
+import { ChevronRight, ShoppingCart, Minus, Plus, Truck, RotateCcw, Shield, AlertCircle } from "lucide-react";
 import Header from "@/components/Header";
 import SiteFooter from "@/components/SiteFooter";
 import { useCart } from "@/hooks/useCart";
@@ -107,7 +107,10 @@ export default function ProductPage() {
     sizes.every((s) => (product.sizeStock![s] ?? 1) === 0);
   const outOfStock =
     sizeOutOfStockAll ||
-    (sizes.length === 0 && product.stock !== null && product.stock === 0);
+    // Sem grade de tamanhos: usa estoque global
+    (sizes.length === 0 && product.stock !== null && product.stock === 0) ||
+    // Com tamanhos mas sem sizeStock individual: fallback para estoque global
+    (sizes.length > 0 && !product.sizeStock && product.stock !== null && product.stock === 0);
   const needsSize   = sizes.length > 0 && !size;
   const effectiveMax =
     size && product.sizeStock
@@ -205,10 +208,13 @@ export default function ProductPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-3">
                     {sizes.map((s) => {
                       const sizeQty = product.sizeStock?.[s];
-                      const sizeOos = sizeQty !== undefined && sizeQty === 0;
+                      // esgotado por grade individual OU por estoque global sem grade
+                      const sizeOos =
+                        (sizeQty !== undefined && sizeQty === 0) ||
+                        (!product.sizeStock && product.stock !== null && product.stock === 0);
                       return (
                         <button
                           key={s}
@@ -217,7 +223,7 @@ export default function ProductPage() {
                           title={sizeOos ? "Esgotado" : undefined}
                           className={`min-w-[52px] h-11 px-3 border text-sm font-semibold transition-colors ${
                             sizeOos
-                              ? "border-gray-200 text-gray-300 cursor-not-allowed line-through"
+                              ? "border-gray-200 text-gray-300 line-through cursor-not-allowed"
                               : size === s
                                 ? "border-gray-900 bg-gray-900 text-white"
                                 : "border-gray-300 text-gray-700 hover:border-gray-700"
@@ -254,6 +260,14 @@ export default function ProductPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Aviso de esgotado — discreto, alinhado ao estilo minimalista */}
+              {outOfStock && (
+                <p className="flex items-center gap-2 text-sm text-gray-400">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  Produto indisponível no momento
+                </p>
+              )}
 
               {/* Botão principal */}
               <button

@@ -11,6 +11,7 @@ export interface EstoqueProduto {
   lote:          string | null;
   validade:      string | null;   // "YYYY-MM-DD"
   fornecedor_id: string | null;
+  size_stock:    Record<string, number> | null;
 }
 
 export async function fetchEstoque(): Promise<EstoqueProduto[]> {
@@ -18,19 +19,30 @@ export async function fetchEstoque(): Promise<EstoqueProduto[]> {
     id: string; name: string; brand: string;
     stock: number | null; stock_min: number | null; is_active: boolean;
     lote: string | null; validade: string | null; fornecedor_id: string | null;
+    size_stock: Record<string, number> | null;
   }>("products", { order: "name.asc" });
 
-  return rows.map(r => ({
-    id:            r.id,
-    name:          r.name,
-    brand:         r.brand,
-    stock:         r.stock         ?? 0,
-    stock_min:     r.stock_min     ?? 5,
-    is_active:     r.is_active,
-    lote:          r.lote          ?? null,
-    validade:      r.validade      ?? null,
-    fornecedor_id: r.fornecedor_id ?? null,
-  }));
+  return rows.map(r => {
+    const sizeStock = r.size_stock ?? null;
+    // Se o produto tem grade por tamanho, o stock real é a soma dos tamanhos
+    // (evita inconsistência quando size_stock e stock ficam dessincronizados)
+    const effectiveStock = sizeStock && Object.keys(sizeStock).length > 0
+      ? Object.values(sizeStock).reduce((sum, v) => sum + (v ?? 0), 0)
+      : (r.stock ?? 0);
+
+    return {
+      id:            r.id,
+      name:          r.name,
+      brand:         r.brand,
+      stock:         effectiveStock,
+      stock_min:     r.stock_min     ?? 5,
+      is_active:     r.is_active,
+      lote:          r.lote          ?? null,
+      validade:      r.validade      ?? null,
+      fornecedor_id: r.fornecedor_id ?? null,
+      size_stock:    sizeStock,
+    };
+  });
 }
 
 /** Restaura o estoque de múltiplos produtos quando um pedido é cancelado. */
@@ -91,6 +103,7 @@ export async function ajustarEstoque(
     lote?:          string;
     validade?:      string | null;
     fornecedor_id?: string | null;
+    size_stock?:    Record<string, number> | null;
   },
 ): Promise<void> {
   const patch: Record<string, unknown> = {
@@ -101,6 +114,7 @@ export async function ajustarEstoque(
   if (opts?.lote          !== undefined) patch.lote          = opts.lote || null;
   if (opts?.validade      !== undefined) patch.validade      = opts.validade || null;
   if (opts?.fornecedor_id !== undefined) patch.fornecedor_id = opts.fornecedor_id || null;
+  if (opts?.size_stock    !== undefined) patch.size_stock    = opts.size_stock;
   await restPatch("products", { column: "id", value: id }, patch);
 }
 

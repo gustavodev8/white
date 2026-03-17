@@ -38,6 +38,7 @@ export interface OrderInput {
   vendedor_nome?:       string | null;
   cupom_codigo?:        string | null;
   observacoes?:         string | null;
+  status?:              Order["status"];
   items:                OrderItemInput[];
 }
 
@@ -102,7 +103,7 @@ export async function createOrder(input: OrderInput): Promise<{ order: Order | n
       discount:              input.discount,
       shipping_cost:         input.shipping_cost ?? 0,
       total:                 input.total,
-      status:                "pending",
+      status:                input.status ?? "pending",
       tracking_code:         null,
       payment_code:          input.payment_code ?? null,
       payment_qr_url:        input.payment_qr_url ?? null,
@@ -136,13 +137,13 @@ export async function createOrder(input: OrderInput): Promise<{ order: Order | n
       discount:              input.discount,
       shipping_cost:         input.shipping_cost ?? 0,
       total:                 input.total,
-      status:                "pending",
-      payment_code:          input.payment_code   ?? null,
-      payment_qr_url:        input.payment_qr_url ?? null,
+      status:                input.status ?? "pending",
       vendedor_nome:         input.vendedor_nome  ?? null,
       cupom_codigo:          input.cupom_codigo   ?? null,
-      // Inclui observacoes só se a coluna já existe no banco (requer migration_config.sql)
-      ...(input.observacoes ? { observacoes: input.observacoes } : {}),
+      // Colunas opcionais — só enviadas se tiverem valor (evita erro 400 se a coluna não existir)
+      ...(input.payment_code   ? { payment_code:   input.payment_code   } : {}),
+      ...(input.payment_qr_url ? { payment_qr_url: input.payment_qr_url } : {}),
+      ...(input.observacoes    ? { observacoes:    input.observacoes    } : {}),
     });
 
     // 2. Insere os itens em lote
@@ -223,7 +224,7 @@ export async function updateOrderStatus(
   orderId: string,
   status: Order["status"],
 ): Promise<void> {
-  // Ao cancelar: restaura estoque
+  // Ao cancelar: restaura estoque + cria saída no fluxo se pedido estava entregue
   if (status === "cancelled") {
     try {
       const items = await restGet<{ product_id: string; quantity: number }>("order_items", {
@@ -232,9 +233,36 @@ export async function updateOrderStatus(
       });
       if (items.length > 0) await restaurarEstoque(items);
     } catch { /* não bloqueia */ }
+
+    // Se estava "entregue", a receita já foi lançada — cria saída (estorno contábil)
+    try {
+      const rows = await restGet<{
+        order_number: string;
+        total: number;
+        payment_method: string;
+        status: string;
+      }>("orders", {
+        select: "order_number,total,payment_method,status",
+        id:     `eq.${orderId}`,
+      });
+      if (rows.length > 0 && rows[0].status === "delivered") {
+        const o = rows[0];
+        const payMap: Record<string, string> = {
+          pix: "PIX", credit: "Cartão de Crédito", boleto: "Boleto",
+        };
+        await restPost("fluxo_caixa", {
+          tipo:            "saida",
+          categoria:       "Estorno/Cancelamento",
+          descricao:       `Estorno Pedido ${o.order_number}`,
+          valor:           Number(o.total),
+          data:            new Date().toISOString().slice(0, 10),
+          forma_pagamento: payMap[o.payment_method] ?? o.payment_method,
+        });
+      }
+    } catch { /* não bloqueia */ }
   }
 
-  // Ao entregar: cria entrada no fluxo de caixa automaticamente
+  // Ao entregar: cria entrada no fluxo de caixa (com proteção contra entrada duplicada)
   if (status === "delivered") {
     try {
       const rows = await restGet<{
@@ -248,17 +276,25 @@ export async function updateOrderStatus(
       });
       if (rows.length > 0) {
         const o = rows[0];
-        const payMap: Record<string, string> = {
-          pix: "PIX", credit: "Cartão de Crédito", boleto: "Boleto",
-        };
-        await restPost("fluxo_caixa", {
-          tipo:            "entrada",
-          categoria:       o.vendedor_nome ? "Venda PDV" : "Venda Online",
-          descricao:       `Pedido ${o.order_number}`,
-          valor:           Number(o.total),
-          data:            new Date().toISOString().slice(0, 10),
-          forma_pagamento: payMap[o.payment_method] ?? o.payment_method,
-        });
+        // Proteção: não cria entrada duplicada se "Entregue" for marcado mais de uma vez
+        const existing = await restGet("fluxo_caixa", {
+          select:    "id",
+          descricao: `eq.Pedido ${o.order_number}`,
+          tipo:      "eq.entrada",
+        }).catch(() => [] as unknown[]);
+        if (existing.length === 0) {
+          const payMap: Record<string, string> = {
+            pix: "PIX", credit: "Cartão de Crédito", boleto: "Boleto",
+          };
+          await restPost("fluxo_caixa", {
+            tipo:            "entrada",
+            categoria:       o.vendedor_nome ? "Venda PDV" : "Venda Online",
+            descricao:       `Pedido ${o.order_number}`,
+            valor:           Number(o.total),
+            data:            new Date().toISOString().slice(0, 10),
+            forma_pagamento: payMap[o.payment_method] ?? o.payment_method,
+          });
+        }
       }
     } catch { /* não bloqueia */ }
   }
@@ -290,9 +326,9 @@ export const STATUS_LABEL: Record<Order["status"], string> = {
 };
 
 export const STATUS_COLOR: Record<Order["status"], string> = {
-  pending:    "bg-yellow-100 text-yellow-700",
-  processing: "bg-blue-100 text-blue-700",
-  shipped:    "bg-purple-100 text-purple-700",
-  delivered:  "bg-green-100 text-green-700",
-  cancelled:  "bg-red-100 text-red-600",
+  pending:    "bg-secondary text-muted-foreground",
+  processing: "bg-secondary text-foreground",
+  shipped:    "bg-foreground/10 text-foreground",
+  delivered:  "bg-foreground text-background",
+  cancelled:  "bg-secondary text-muted-foreground",
 };

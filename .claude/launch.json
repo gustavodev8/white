@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "rbfarma",
+      "name": "loja-sistema",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["C:/Users/Pichau/Desktop/rbfarma/node_modules/vite/bin/vite.js"],
+      "runtimeArgs": ["C:/Users/Pichau/Desktop/loja.sistema/loja.sistema/node_modules/vite/bin/vite.js"],
       "port": 5173,
       "autoPort": true
     }

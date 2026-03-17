@@ -2,7 +2,8 @@ import {
   Search, User, ShoppingCart, Heart, X, ChevronDown,
   LogOut, Package, Menu,
 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { useProductSearch } from "@/hooks/useProducts";
 import { useCart, cartTotal, cartCount } from "@/hooks/useCart";
@@ -46,8 +47,31 @@ function SearchBar({
   onChange, onClear, onFocusOpen, onAddToCart, onProductClick,
   className = "",
 }: SearchBarProps) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  // Recalcula posição do dropdown usando bounding rect (funciona fora de qualquer stacking context)
+  const updatePos = useCallback(() => {
+    if (!wrapperRef.current) return;
+    const r = wrapperRef.current.getBoundingClientRect();
+    setDropdownPos({ top: r.bottom + 6, left: r.left, width: r.width });
+  }, []);
+
+  useEffect(() => {
+    if (!open || query.length < 2) { setDropdownPos(null); return; }
+    updatePos();
+    window.addEventListener("resize", updatePos);
+    window.addEventListener("scroll", updatePos, true);
+    return () => {
+      window.removeEventListener("resize", updatePos);
+      window.removeEventListener("scroll", updatePos, true);
+    };
+  }, [open, query, updatePos]);
+
+  const showDropdown = open && query.length >= 2 && dropdownPos;
+
   return (
-    <div className={`relative ${className}`}>
+    <div ref={wrapperRef} className={`relative ${className}`}>
       <div className="flex items-center bg-gray-100 rounded-full overflow-hidden pr-1 border border-gray-200">
         <input
           ref={inputRef}
@@ -68,10 +92,12 @@ function SearchBar({
         </button>
       </div>
 
-      {open && query.length >= 2 && (
+      {/* Dropdown via portal — fora de qualquer stacking context, cliques sempre chegam */}
+      {showDropdown && createPortal(
         <div
           ref={dropdownRef}
-          className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-lg z-50 max-h-[420px] overflow-y-auto"
+          style={{ position: "fixed", top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width, zIndex: 9999 }}
+          className="bg-white border border-gray-200 rounded-xl shadow-lg max-h-[420px] overflow-y-auto animate-scale-in origin-top"
         >
           {isFetching ? (
             <div className="p-4 text-sm text-gray-400 text-center">Buscando...</div>
@@ -86,35 +112,43 @@ function SearchBar({
                 return (
                   <li
                     key={product.id}
-                    onClick={() => onProductClick(product)}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 cursor-pointer"
+                    /* onMouseDown com preventDefault mantém o foco no input e evita que o
+                       teclado virtual feche (e redimensione a viewport) antes do click disparar */
+                    onMouseDown={(e) => e.preventDefault()}
+                    className="flex items-center border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
                   >
-                    <img
-                      src={product.image}
-                      alt={product.name}
-                      className={`w-12 h-12 object-contain rounded-lg bg-gray-100 flex-shrink-0 ${esgotado ? "opacity-50" : ""}`}
-                      onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">{product.name}</p>
-                      <p className="text-xs text-gray-400">{product.brand} · {product.quantity}</p>
-                      {esgotado && (
-                        <p className="text-[10px] font-semibold text-red-500 mt-0.5">Esgotado</p>
-                      )}
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-sm font-bold text-gray-800">{fmt(product.price)}</p>
-                      {product.discount > 0 && (
-                        <p className="text-xs text-primary font-medium">-{product.discount}%</p>
-                      )}
-                    </div>
+                    <Link
+                      to={`/produto/${product.id}`}
+                      state={{ product }}
+                      onClick={() => onProductClick(product)}
+                      className="flex items-center gap-3 flex-1 min-w-0 px-4 py-3"
+                    >
+                      <img
+                        src={product.image}
+                        alt={product.name}
+                        className={`w-12 h-12 object-contain rounded-lg bg-gray-100 flex-shrink-0 ${esgotado ? "opacity-50" : ""}`}
+                        onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{product.name}</p>
+                        <p className="text-xs text-gray-400">{product.brand} · {product.quantity}</p>
+                        {esgotado && (
+                          <p className="text-[10px] font-semibold text-red-500 mt-0.5">Esgotado</p>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-sm font-bold text-gray-800">{fmt(product.price)}</p>
+                        {product.discount > 0 && (
+                          <p className="text-xs text-foreground font-medium">-{product.discount}%</p>
+                        )}
+                      </div>
+                    </Link>
                     <button
-                      onClick={(e) => { e.stopPropagation(); if (!esgotado) onAddToCart(product); }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.preventDefault(); if (!esgotado) onAddToCart(product); }}
                       disabled={esgotado}
-                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors flex-shrink-0 text-lg font-bold leading-none ${
-                        esgotado
-                          ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                          : "bg-gray-900 text-white hover:bg-black"
+                      className={`mr-4 w-8 h-8 rounded-full flex items-center justify-center transition-colors flex-shrink-0 text-lg font-bold leading-none ${
+                        esgotado ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-gray-900 text-white hover:bg-black"
                       }`}
                     >+</button>
                   </li>
@@ -122,7 +156,8 @@ function SearchBar({
               })}
             </ul>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -174,7 +209,7 @@ function UserMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50">
+        <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50 animate-scale-in origin-top-right">
           <div className="px-4 py-2.5 border-b border-gray-100">
             <p className="text-xs font-semibold text-gray-800 truncate">{profile?.name || "Usuário"}</p>
             <p className="text-[11px] text-gray-400 truncate">{user.email}</p>
@@ -227,9 +262,28 @@ const Header = () => {
   const [query,          setQuery]         = useState("");
   const [open,           setOpen]          = useState(false);
   const [drawerOpen,     setDrawerOpen]    = useState(false);
+  const [drawerMounted,  setDrawerMounted] = useState(false);
+  const [drawerShown,    setDrawerShown]   = useState(false);
   const [cartOpen,       setCartOpen]      = useState(false);
   const [previewProduct, setPreviewProduct] = useState<Product | null>(null);
+  const [scrolled,       setScrolled]      = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (drawerOpen) {
+      setDrawerMounted(true);
+      const t = setTimeout(() => setDrawerShown(true), 10);
+      return () => clearTimeout(t);
+    } else {
+      setDrawerShown(false);
+    }
+  }, [drawerOpen]);
 
   const { data: results = [], isFetching } = useProductSearch(query);
   const { items, addItem } = useCart();
@@ -271,10 +325,10 @@ const Header = () => {
     if (query.length >= 2) setOpen(true);
   };
 
-  const handleProductClick = (product: Product) => {
+  const handleProductClick = (_product: Product) => {
     setOpen(false);
     setQuery("");
-    navigate(`/produto/${product.id}`, { state: { product } });
+    // navegação feita pelo <Link> no SearchBar
   };
 
   const searchBarProps: SearchBarProps = {
@@ -289,7 +343,7 @@ const Header = () => {
 
   return (
     <>
-      <header className="w-full bg-white sticky top-0 z-40">
+      <header className={`w-full bg-white sticky top-0 z-40 transition-shadow duration-300 ${scrolled ? "shadow-md" : ""}`}>
 
         {/* ── Barra de anúncio ─────────────────────────────────────────────── */}
         <div className="bg-gray-900 text-white text-center py-2 px-4">
@@ -375,8 +429,8 @@ const Header = () => {
               <Link
                 key={slug}
                 to={`/categoria/${slug}`}
-                className={`text-sm font-semibold tracking-wider transition-colors whitespace-nowrap hover:text-primary ${
-                  highlight ? "text-primary" : "text-gray-700"
+                className={`text-sm font-semibold tracking-wider whitespace-nowrap hover:text-foreground nav-underline ${
+                  highlight ? "text-foreground" : "text-gray-700"
                 }`}
               >
                 {label}
@@ -386,68 +440,65 @@ const Header = () => {
         </div>
       </header>
 
-      {/* ── Drawer mobile ────────────────────────────────────────────────────── */}
-      <div
-        className={`fixed inset-0 z-50 md:hidden transition-all duration-300 ${
-          drawerOpen ? "pointer-events-auto" : "pointer-events-none"
-        }`}
-      >
-        <div
-          className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${
-            drawerOpen ? "opacity-100" : "opacity-0"
-          }`}
-          onClick={() => setDrawerOpen(false)}
-        />
-
-        <div
-          className={`absolute left-0 top-0 bottom-0 w-72 bg-white flex flex-col shadow-2xl
-            transition-transform duration-300 ease-in-out will-change-transform ${
-            drawerOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
-        >
-          <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100">
-            <StoreLogo />
-            <button
-              onClick={() => setDrawerOpen(false)}
-              className="p-1.5 rounded-full border border-gray-200 text-gray-500 hover:text-gray-800 transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          <nav className="flex flex-col py-3">
-            {NAV_LINKS.map(({ label, slug, highlight }) => (
-              <Link
-                key={slug}
-                to={`/categoria/${slug}`}
+      {/* ── Drawer mobile (portal → fora do transform da página) ─────────────── */}
+      {drawerMounted && createPortal(
+        <>
+          <div
+            className={`fixed inset-0 z-50 bg-black/50 transition-opacity duration-300 md:hidden ${
+              drawerShown ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+            }`}
+            onClick={() => setDrawerOpen(false)}
+          />
+          <div
+            className={`fixed left-0 top-0 bottom-0 z-[51] w-72 bg-white flex flex-col shadow-2xl
+              transition-transform duration-300 ease-in-out md:hidden ${
+              drawerShown ? "translate-x-0" : "-translate-x-full"
+            }`}
+            onTransitionEnd={() => { if (!drawerOpen) setDrawerMounted(false); }}
+          >
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100">
+              <StoreLogo />
+              <button
                 onClick={() => setDrawerOpen(false)}
-                className={`px-6 py-3.5 text-sm font-semibold tracking-wider transition-colors hover:bg-gray-50 ${
-                  highlight ? "text-primary" : "text-gray-800"
-                }`}
+                className="p-1.5 rounded-full border border-gray-200 text-gray-500 hover:text-gray-800 transition-colors"
               >
-                {label}
-              </Link>
-            ))}
-          </nav>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
 
-          <div className="mt-auto px-5 py-5 border-t border-gray-100">
-            <Link
-              to="/minha-conta"
-              onClick={() => setDrawerOpen(false)}
-              className="flex items-center gap-3 text-sm text-gray-600 hover:text-gray-900 py-2"
-            >
-              <User className="h-4 w-4" /> Minha conta
-            </Link>
-            <Link
-              to="/minha-conta"
-              onClick={() => setDrawerOpen(false)}
-              className="flex items-center gap-3 text-sm text-gray-600 hover:text-gray-900 py-2"
-            >
-              <Package className="h-4 w-4" /> Meus pedidos
-            </Link>
+            <nav className="flex flex-col py-3">
+              {NAV_LINKS.map(({ label, slug }) => (
+                <Link
+                  key={slug}
+                  to={`/categoria/${slug}`}
+                  onClick={() => setDrawerOpen(false)}
+                  className="px-6 py-3.5 text-sm font-semibold tracking-wider text-gray-800 transition-colors hover:bg-gray-50"
+                >
+                  {label}
+                </Link>
+              ))}
+            </nav>
+
+            <div className="mt-auto px-5 py-5 border-t border-gray-100">
+              <Link
+                to="/minha-conta"
+                onClick={() => setDrawerOpen(false)}
+                className="flex items-center gap-3 text-sm text-gray-600 hover:text-gray-900 py-2"
+              >
+                <User className="h-4 w-4" /> Minha conta
+              </Link>
+              <Link
+                to="/minha-conta"
+                onClick={() => setDrawerOpen(false)}
+                className="flex items-center gap-3 text-sm text-gray-600 hover:text-gray-900 py-2"
+              >
+                <Package className="h-4 w-4" /> Meus pedidos
+              </Link>
+            </div>
           </div>
-        </div>
-      </div>
+        </>,
+        document.body
+      )}
 
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
 

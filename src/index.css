@@ -85,9 +85,22 @@
     @apply border-border;
   }
 
+  html {
+    scroll-behavior: smooth;
+    overflow-x: hidden;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* Transição suave em todos os links e botões */
+  a, button {
+    transition-property: color, background-color, border-color, opacity, box-shadow, transform;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
   }
 }
 
@@ -99,4 +112,35 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* Efeito underline deslizante para links de navegação */
+  .nav-underline {
+    position: relative;
+  }
+  .nav-underline::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 0;
+    height: 1.5px;
+    background-color: currentColor;
+    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .nav-underline:hover::after {
+    width: 100%;
+  }
+
+  /* Delays de animação para stagger */
+  .delay-0   { animation-delay: 0ms; }
+  .delay-50  { animation-delay: 50ms; }
+  .delay-100 { animation-delay: 100ms; }
+  .delay-150 { animation-delay: 150ms; }
+  .delay-200 { animation-delay: 200ms; }
+  .delay-250 { animation-delay: 250ms; }
+  .delay-300 { animation-delay: 300ms; }
+  .delay-350 { animation-delay: 350ms; }
+  .delay-400 { animation-delay: 400ms; }
+  .delay-500 { animation-delay: 500ms; }
+  .delay-600 { animation-delay: 600ms; }
 }
