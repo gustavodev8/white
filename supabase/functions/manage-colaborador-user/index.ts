@@ -166,6 +166,35 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── Promover usuário existente a admin ───────────────────────────────────
+    if (action === "promote_admin") {
+      const { email } = body as { email: string };
+
+      if (!email) {
+        return new Response(JSON.stringify({ error: "email é obrigatório" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: { users }, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
+      if (listErr) {
+        return new Response(JSON.stringify({ error: listErr.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const found = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+      if (!found) {
+        return new Response(JSON.stringify({ error: "Nenhuma conta encontrada com esse e-mail." }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ user_id: found.id }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     return new Response(JSON.stringify({ error: "Ação desconhecida: " + action }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
