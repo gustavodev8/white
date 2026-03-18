@@ -107,12 +107,27 @@ const ANON_KEY  = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 const SUPA_URL  = import.meta.env.VITE_SUPABASE_URL as string;
 
 async function getAccessToken(): Promise<string> {
-  // Sempre tenta refresh primeiro para garantir token fresco
-  // (Gateway do Supabase rejeita tokens expirados com 401)
+  // Lê diretamente do localStorage (mesma lógica do supabaseRest.ts)
+  // Evita travamento pelo lock customizado do cliente JS
+  try {
+    const ref = SUPA_URL.replace(/^https?:\/\//, "").split(".")[0];
+    const raw = localStorage.getItem(`sb-${ref}-auth-token`);
+    if (raw) {
+      const session = JSON.parse(raw) as Record<string, unknown>;
+      const token     = session.access_token as string | undefined;
+      const expiresAt = session.expires_at   as number | undefined;
+      // Válido se ainda tem mais de 60s antes de vencer
+      if (token && (!expiresAt || Date.now() / 1000 < expiresAt - 60)) {
+        return token;
+      }
+    }
+  } catch { /* ignore */ }
+
+  // Token expirado — tenta renovar
   const { data: refreshData } = await supabase.auth.refreshSession();
   if (refreshData.session?.access_token) return refreshData.session.access_token;
 
-  // Fallback: sessão atual sem refresh
+  // Último fallback: sessão atual
   const { data: { session } } = await supabase.auth.getSession();
   if (session?.access_token) return session.access_token;
 
