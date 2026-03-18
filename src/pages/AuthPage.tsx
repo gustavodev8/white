@@ -4,6 +4,19 @@ import { STORE_NAME } from "@/config/storeConfig";
 import { Eye, EyeOff, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
+const stepAnimStyles = `
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(32px); }
+    to   { opacity: 1; transform: translateX(0);    }
+  }
+  @keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(-32px); }
+    to   { opacity: 1; transform: translateX(0);     }
+  }
+  .anim-forward { animation: slideInRight 0.28s cubic-bezier(.25,.46,.45,.94) both; }
+  .anim-back    { animation: slideInLeft  0.28s cubic-bezier(.25,.46,.45,.94) both; }
+`;
+
 /* ── masks ── */
 function maskCPF(v: string) {
   return v.replace(/\D/g, "").slice(0, 11)
@@ -177,6 +190,7 @@ function RegisterForm({ onSuccess, onLogin }: { onSuccess: () => void; onLogin: 
   const { signUp } = useAuth();
 
   const [step,      setStep]      = useState(1);
+  const [dir,       setDir]       = useState<"forward" | "back">("forward");
   const [name,      setName]      = useState("");
   const [email,     setEmail]     = useState("");
   const [cpf,       setCpf]       = useState("");
@@ -197,11 +211,17 @@ function RegisterForm({ onSuccess, onLogin }: { onSuccess: () => void; onLogin: 
     if (step === 1) {
       if (!name.trim()) return setError("Nome completo é obrigatório.");
       if (!email.trim()) return setError("E-mail é obrigatório.");
-      setStep(2);
+      setDir("forward"); setStep(2);
     } else if (step === 2) {
       if (!terms) return setError("Aceite os Termos de Uso para continuar.");
-      setStep(3);
+      setDir("forward"); setStep(3);
     }
+  }
+
+  function goBack() {
+    setDir("back");
+    setStep(step - 1);
+    setError("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -241,89 +261,93 @@ function RegisterForm({ onSuccess, onLogin }: { onSuccess: () => void; onLogin: 
   ];
 
   return (
-    <form onSubmit={step === 3 ? handleSubmit : goNext} className="flex flex-col gap-5">
+    <form onSubmit={step === 3 ? handleSubmit : goNext} className="flex flex-col gap-5" style={{ overflow: "hidden" }}>
+      <style>{stepAnimStyles}</style>
+
       <StepBar current={step} total={3} />
 
-      <div className="mb-1">
-        <h1 className="text-2xl font-bold text-gray-900">{titles[step - 1]}</h1>
-        <p className="text-sm text-gray-400 mt-1">{subtitles[step - 1]}</p>
-      </div>
+      {/* Conteúdo animado — key muda a cada step para disparar a animação */}
+      <div key={step} className={dir === "forward" ? "anim-forward" : "anim-back"}>
+        <div className="mb-5">
+          <h1 className="text-2xl font-bold text-gray-900">{titles[step - 1]}</h1>
+          <p className="text-sm text-gray-400 mt-1">{subtitles[step - 1]}</p>
+        </div>
 
-      {/* Etapa 1 */}
-      {step === 1 && (
-        <>
-          <Field label="Nome completo" value={name} onChange={setName} placeholder="Seu nome completo" />
-          <Field label="Seu e-mail" value={email} onChange={setEmail} type="email" placeholder="seu@email.com" />
-          <Field label="CPF" value={cpf} onChange={(v) => setCpf(maskCPF(v))} placeholder="000.000.000-00" />
-        </>
-      )}
+        <div className="flex flex-col gap-4">
+          {/* Etapa 1 */}
+          {step === 1 && (
+            <>
+              <Field label="Nome completo" value={name} onChange={setName} placeholder="Seu nome completo" />
+              <Field label="Seu e-mail" value={email} onChange={setEmail} type="email" placeholder="seu@email.com" />
+              <Field label="CPF" value={cpf} onChange={(v) => setCpf(maskCPF(v))} placeholder="000.000.000-00" />
+            </>
+          )}
 
-      {/* Etapa 2 */}
-      {step === 2 && (
-        <>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Data de nascimento" value={birthDate} onChange={setBirthDate} type="date" />
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm text-gray-500">Gênero</label>
-              <div className="relative">
-                <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  className="w-full bg-gray-100 rounded-xl px-4 py-3 text-sm text-gray-800 appearance-none
-                    focus:outline-none focus:ring-2 focus:ring-gray-900/10 transition-all cursor-pointer pr-10"
-                >
-                  <option value="">Selecione</option>
-                  <option value="M">Masculino</option>
-                  <option value="F">Feminino</option>
-                  <option value="O">Outro</option>
-                  <option value="N">Prefiro não informar</option>
-                </select>
-                <svg className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400"
-                  viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </div>
-            </div>
-          </div>
-          <Field label="Telefone celular" value={phone} onChange={(v) => setPhone(maskPhone(v))} placeholder="(00) 00000-0000" />
-
-          <div className="h-px bg-gray-100 my-1" />
-
-          <Checkbox checked={offers} onChange={setOffers}>
-            Quero receber ofertas e novidades da {STORE_NAME} por e-mail.
-          </Checkbox>
-          <Checkbox checked={terms} onChange={setTerms}>
-            Li e aceito os{" "}
-            <span className="text-gray-900 font-semibold underline underline-offset-2">Termos de uso</span>{" "}e a{" "}
-            <span className="text-gray-900 font-semibold underline underline-offset-2">Política de privacidade.</span>
-          </Checkbox>
-        </>
-      )}
-
-      {/* Etapa 3 */}
-      {step === 3 && (
-        <>
-          <PasswordField label="Senha" value={password} onChange={setPassword} placeholder="Mínimo 6 caracteres" />
-          <PasswordField label="Confirmar senha" value={confirm} onChange={setConfirm} placeholder="Repita a senha" />
-
-          <div className="flex flex-col gap-2">
-            {[
-              { ok: password.length >= 6,   label: "Pelo menos 6 caracteres" },
-              { ok: /[A-Z]/.test(password), label: "Uma letra maiúscula" },
-              { ok: /[0-9]/.test(password), label: "Um número" },
-            ].map(({ ok, label }) => (
-              <div key={label} className={`flex items-center gap-2 text-xs transition-colors ${ok ? "text-green-600" : "text-gray-400"}`}>
-                <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 transition-colors ${ok ? "bg-green-500" : "bg-gray-200"}`}>
-                  {ok && <svg className="w-2 h-2 text-white" viewBox="0 0 10 8" fill="none">
-                    <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>}
+          {/* Etapa 2 */}
+          {step === 2 && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Data de nascimento" value={birthDate} onChange={setBirthDate} type="date" />
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm text-gray-500">Gênero</label>
+                  <div className="relative">
+                    <select
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value)}
+                      className="w-full bg-gray-100 rounded-xl px-4 py-3 text-sm text-gray-800 appearance-none
+                        focus:outline-none focus:ring-2 focus:ring-gray-900/10 transition-all cursor-pointer pr-10"
+                    >
+                      <option value="">Selecione</option>
+                      <option value="M">Masculino</option>
+                      <option value="F">Feminino</option>
+                      <option value="O">Outro</option>
+                      <option value="N">Prefiro não informar</option>
+                    </select>
+                    <svg className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400"
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
                 </div>
-                {label}
               </div>
-            ))}
-          </div>
-        </>
-      )}
+              <Field label="Telefone celular" value={phone} onChange={(v) => setPhone(maskPhone(v))} placeholder="(00) 00000-0000" />
+              <div className="h-px bg-gray-100" />
+              <Checkbox checked={offers} onChange={setOffers}>
+                Quero receber ofertas e novidades da {STORE_NAME} por e-mail.
+              </Checkbox>
+              <Checkbox checked={terms} onChange={setTerms}>
+                Li e aceito os{" "}
+                <span className="text-gray-900 font-semibold underline underline-offset-2">Termos de uso</span>{" "}e a{" "}
+                <span className="text-gray-900 font-semibold underline underline-offset-2">Política de privacidade.</span>
+              </Checkbox>
+            </>
+          )}
+
+          {/* Etapa 3 */}
+          {step === 3 && (
+            <>
+              <PasswordField label="Senha" value={password} onChange={setPassword} placeholder="Mínimo 6 caracteres" />
+              <PasswordField label="Confirmar senha" value={confirm} onChange={setConfirm} placeholder="Repita a senha" />
+              <div className="flex flex-col gap-2">
+                {[
+                  { ok: password.length >= 6,   label: "Pelo menos 6 caracteres" },
+                  { ok: /[A-Z]/.test(password), label: "Uma letra maiúscula" },
+                  { ok: /[0-9]/.test(password), label: "Um número" },
+                ].map(({ ok, label }) => (
+                  <div key={label} className={`flex items-center gap-2 text-xs transition-colors ${ok ? "text-green-600" : "text-gray-400"}`}>
+                    <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 transition-colors ${ok ? "bg-green-500" : "bg-gray-200"}`}>
+                      {ok && <svg className="w-2 h-2 text-white" viewBox="0 0 10 8" fill="none">
+                        <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>}
+                    </div>
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
 
       {error && <ErrorMsg msg={error} />}
 
@@ -341,7 +365,7 @@ function RegisterForm({ onSuccess, onLogin }: { onSuccess: () => void; onLogin: 
         {step > 1 && (
           <button
             type="button"
-            onClick={() => { setStep(step - 1); setError(""); }}
+            onClick={goBack}
             className="w-full py-3 rounded-2xl text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
           >
             Voltar
