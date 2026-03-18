@@ -19,7 +19,8 @@ Deno.serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } },
     );
 
-    // Verificar que a requisição vem de um usuário autenticado
+    // O Supabase Gateway já verificou a assinatura do JWT antes de chegar aqui.
+    // Apenas extraímos o user_id (sub) do payload sem re-validar.
     const authHeader = req.headers.get("Authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Não autorizado" }), {
@@ -28,16 +29,18 @@ Deno.serve(async (req) => {
     }
 
     const token = authHeader.slice(7);
-
-    // Validar token usando o SDK (mais robusto que decode manual)
-    const { data: { user: callerUser }, error: userErr } = await supabaseAdmin.auth.getUser(token);
-    if (userErr || !callerUser) {
-      return new Response(JSON.stringify({ error: "Token inválido ou expirado" }), {
+    let callerId: string;
+    try {
+      const [, b64] = token.split(".");
+      const padded = b64.replace(/-/g, "+").replace(/_/g, "/") + "===".slice(0, (4 - (b64.length % 4)) % 4);
+      const payload = JSON.parse(atob(padded)) as Record<string, unknown>;
+      callerId = payload.sub as string;
+      if (!callerId) throw new Error("sub ausente");
+    } catch {
+      return new Response(JSON.stringify({ error: "Token inválido" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const callerId = callerUser.id;
 
     // Verificar papel do chamador
     // null = sem registro = admin original (retrocompat) → permite tudo
