@@ -96,7 +96,7 @@ import {
   fetchUserRole, fetchColaboradorAcesso,
   createColaboradorUser, updatePermissoes, toggleAcesso,
   updatePassword, deleteColaboradorUser, gerarSenhaAleatoria,
-  ABAS_COLABORADOR, createAdminUser, fetchAdmins,
+  ABAS_COLABORADOR, fetchAdmins, promoteToAdmin,
 } from "@/services/userRolesService";
 import type { UserRole, AdminEntry } from "@/services/userRolesService";
 import {
@@ -6070,39 +6070,38 @@ function ContasTab({ isActive }: { isActive: boolean }) {
 
 // ─── Seção Administradores (dentro do ConfigTab) ──────────────────────────────
 function AdminsSection() {
-  const [admins,   setAdmins]   = useState<AdminEntry[]>([]);
-  const [loading,  setLoading]  = useState(false);
-  const [open,     setOpen]     = useState(false);
-  const [name,     setName]     = useState("");
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [showPwd,  setShowPwd]  = useState(false);
-  const [saving,   setSaving]   = useState(false);
+  const [admins,  setAdmins]  = useState<AdminEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [open,    setOpen]    = useState(false);
+  const [email,   setEmail]   = useState("");
+  const [saving,  setSaving]  = useState(false);
 
   useEffect(() => {
     setLoading(true);
     fetchAdmins().then(setAdmins).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handlePromote(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !email.trim() || !password) return;
+    if (!email.trim()) return;
     setSaving(true);
     try {
-      await createAdminUser({ name, email, password });
-      toast.success("Administrador criado com sucesso!");
+      await promoteToAdmin(email.trim());
+      toast.success("Usuário promovido a administrador!");
       setAdmins(await fetchAdmins());
       setOpen(false);
-      setName(""); setEmail(""); setPassword("");
+      setEmail("");
     } catch (err: any) {
-      toast.error(err.message ?? "Erro ao criar administrador.");
+      toast.error(err.message ?? "Erro ao promover usuário.");
     } finally { setSaving(false); }
   }
 
   async function handleToggle(entry: AdminEntry) {
-    await toggleAcesso(entry.user_id, !entry.ativo);
-    setAdmins(prev => prev.map(a => a.user_id === entry.user_id ? { ...a, ativo: !a.ativo } : a));
-    toast.success(entry.ativo ? "Acesso revogado." : "Acesso reativado.");
+    try {
+      await toggleAcesso(entry.user_id, !entry.ativo);
+      setAdmins(prev => prev.map(a => a.user_id === entry.user_id ? { ...a, ativo: !a.ativo } : a));
+      toast.success(entry.ativo ? "Acesso revogado." : "Acesso reativado.");
+    } catch { toast.error("Erro ao alterar acesso."); }
   }
 
   return (
@@ -6114,7 +6113,7 @@ function AdminsSection() {
           <Badge variant="secondary" className="text-xs">{admins.length}</Badge>
         </div>
         <Button size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setOpen(true)}>
-          <UserPlus className="h-3.5 w-3.5" /> Novo admin
+          <UserPlus className="h-3.5 w-3.5" /> Adicionar admin
         </Button>
       </div>
 
@@ -6122,7 +6121,7 @@ function AdminsSection() {
         {loading ? (
           <p className="text-sm text-muted-foreground px-5 py-4">Carregando...</p>
         ) : admins.length === 0 ? (
-          <p className="text-sm text-muted-foreground px-5 py-4">Nenhum administrador cadastrado.</p>
+          <p className="text-sm text-muted-foreground px-5 py-4">Nenhum administrador adicional cadastrado.</p>
         ) : admins.map(a => (
           <div key={a.id} className="flex items-center justify-between px-5 py-3.5">
             <div className="flex items-center gap-3">
@@ -6144,46 +6143,28 @@ function AdminsSection() {
         ))}
       </div>
 
-      {/* Modal criar admin */}
+      {/* Modal promover a admin */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5" /> Novo Administrador
+              <ShieldCheck className="h-5 w-5" /> Adicionar Administrador
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4 pt-2">
-            <div>
-              <Label className="text-xs">Nome completo</Label>
-              <Input className="mt-1" value={name} onChange={e => setName(e.target.value)}
-                placeholder="Nome do administrador" required />
+          <form onSubmit={handlePromote} className="space-y-4 pt-2">
+            <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg px-4 py-3">
+              O usuário precisa já ter uma conta no sistema. Informe o e-mail cadastrado para conceder acesso de administrador.
             </div>
             <div>
-              <Label className="text-xs">E-mail</Label>
+              <Label className="text-xs">E-mail da conta</Label>
               <Input className="mt-1" type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="admin@email.com" required />
-            </div>
-            <div>
-              <Label className="text-xs">Senha</Label>
-              <div className="relative mt-1">
-                <Input type={showPwd ? "text" : "password"} value={password}
-                  onChange={e => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres"
-                  className="pr-10" required minLength={6} />
-                <button type="button" onClick={() => setShowPwd(!showPwd)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                  {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              <button type="button" className="text-xs text-muted-foreground mt-1.5 hover:text-foreground transition-colors"
-                onClick={() => setPassword(gerarSenhaAleatoria())}>
-                Gerar senha aleatória
-              </button>
+                placeholder="email@exemplo.com" required />
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={saving} className="gap-1.5">
-                {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-                {saving ? "Criando..." : "Criar administrador"}
+                {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                {saving ? "Salvando..." : "Confirmar"}
               </Button>
             </div>
           </form>
