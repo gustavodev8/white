@@ -131,9 +131,9 @@ export interface AdminEntry {
 }
 
 export async function fetchAdmins(): Promise<AdminEntry[]> {
-  const { data, error } = await supabase
+  const { data: roles, error } = await supabase
     .from("user_roles")
-    .select("id, user_id, ativo, created_at, profiles(name, email)")
+    .select("id, user_id, ativo, created_at")
     .eq("role", "admin")
     .order("created_at", { ascending: true });
 
@@ -142,34 +142,39 @@ export async function fetchAdmins(): Promise<AdminEntry[]> {
     throw error;
   }
 
-  return (data ?? []).map((r: any) => ({
+  if (!roles || roles.length === 0) return [];
+
+  // Buscar profiles separadamente — sem coluna email (pode não existir no schema)
+  const userIds = roles.map((r: any) => r.user_id);
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, name")
+    .in("id", userIds);
+
+  const profileMap: Record<string, { name?: string }> = {};
+  (profiles ?? []).forEach((p: any) => { profileMap[p.id] = { name: p.name }; });
+
+  return roles.map((r: any) => ({
     id:         r.id,
     user_id:    r.user_id,
     ativo:      r.ativo,
     created_at: r.created_at,
-    name:       r.profiles?.name  ?? undefined,
-    email:      r.profiles?.email ?? undefined,
+    name:       profileMap[r.user_id]?.name,
+    email:      undefined,
   }));
 }
 
 // ── Promover usuário existente a admin ────────────────────────────────────────
-// O usuário precisa já ter uma conta no sistema (profiles).
-// Buscamos pelo e-mail na tabela profiles e inserimos/atualizamos user_roles.
+// Usa a Edge Function (que tem service role) para buscar o user_id pelo e-mail
+// em auth.users e então atualiza/insere em user_roles com role="admin".
 
 export async function promoteToAdmin(email: string): Promise<void> {
-  // 1. Achar o user_id pelo e-mail na tabela profiles
-  const { data: profile, error: profErr } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("email", email)
-    .maybeSingle();
+  const result = await callEdge({ action: "promote_admin", email });
+  const userId = result.user_id as string | undefined;
 
-  if (profErr) throw profErr;
-  if (!profile) throw new Error("Nenhuma conta encontrada com esse e-mail.");
+  if (!userId) throw new Error("Usuário não encontrado com esse e-mail.");
 
-  const userId = profile.id;
-
-  // 2. Verificar se já tem uma entrada em user_roles
+  // Verificar se já existe entrada em user_roles
   const { data: existing } = await supabase
     .from("user_roles")
     .select("id, role")
@@ -178,17 +183,15 @@ export async function promoteToAdmin(email: string): Promise<void> {
 
   if (existing) {
     if (existing.role === "admin") throw new Error("Este usuário já é administrador.");
-    // Atualizar para admin
     const { error } = await supabase
       .from("user_roles")
-      .update({ role: "admin", permissoes: [], ativo: true, colaborador_id: null, updated_at: new Date().toISOString() })
+      .update({ role: "admin", permissoes: [], ativo: true })
       .eq("user_id", userId);
     if (error) throw error;
   } else {
-    // Inserir novo registro admin
     const { error } = await supabase
       .from("user_roles")
-      .insert({ user_id: userId, role: "admin", permissoes: [], ativo: true, colaborador_id: null });
+      .insert({ user_id: userId, role: "admin", permissoes: [], ativo: true });
     if (error) throw error;
   }
 }
