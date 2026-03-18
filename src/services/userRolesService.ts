@@ -119,17 +119,6 @@ export async function createColaboradorUser(input: {
   return result.user_id as string;
 }
 
-// ── Criar conta de admin ──────────────────────────────────────────────────────
-
-export async function createAdminUser(input: {
-  email:    string;
-  password: string;
-  name:     string;
-}): Promise<string> {
-  const result = await callEdge({ action: "create", ...input, role: "admin", permissoes: [] });
-  return result.user_id as string;
-}
-
 // ── Listar admins ─────────────────────────────────────────────────────────────
 
 export interface AdminEntry {
@@ -161,6 +150,47 @@ export async function fetchAdmins(): Promise<AdminEntry[]> {
     name:       r.profiles?.name  ?? undefined,
     email:      r.profiles?.email ?? undefined,
   }));
+}
+
+// ── Promover usuário existente a admin ────────────────────────────────────────
+// O usuário precisa já ter uma conta no sistema (profiles).
+// Buscamos pelo e-mail na tabela profiles e inserimos/atualizamos user_roles.
+
+export async function promoteToAdmin(email: string): Promise<void> {
+  // 1. Achar o user_id pelo e-mail na tabela profiles
+  const { data: profile, error: profErr } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (profErr) throw profErr;
+  if (!profile) throw new Error("Nenhuma conta encontrada com esse e-mail.");
+
+  const userId = profile.id;
+
+  // 2. Verificar se já tem uma entrada em user_roles
+  const { data: existing } = await supabase
+    .from("user_roles")
+    .select("id, role")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existing) {
+    if (existing.role === "admin") throw new Error("Este usuário já é administrador.");
+    // Atualizar para admin
+    const { error } = await supabase
+      .from("user_roles")
+      .update({ role: "admin", permissoes: [], ativo: true, colaborador_id: null, updated_at: new Date().toISOString() })
+      .eq("user_id", userId);
+    if (error) throw error;
+  } else {
+    // Inserir novo registro admin
+    const { error } = await supabase
+      .from("user_roles")
+      .insert({ user_id: userId, role: "admin", permissoes: [], ativo: true, colaborador_id: null });
+    if (error) throw error;
+  }
 }
 
 // ── Alterar senha ─────────────────────────────────────────────────────────────
