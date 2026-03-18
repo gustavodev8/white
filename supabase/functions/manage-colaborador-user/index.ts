@@ -5,14 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-/** Decodifica o payload de um JWT (base64url → JSON) sem verificar assinatura.
- *  O Supabase Gateway já verificou a assinatura antes de chamar a função. */
-function decodeJwtPayload(jwt: string): Record<string, unknown> {
-  const [, b64] = jwt.split(".");
-  // base64url → base64 padrão
-  const padded = b64.replace(/-/g, "+").replace(/_/g, "/") + "===".slice(0, (4 - (b64.length % 4)) % 4);
-  return JSON.parse(atob(padded));
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -29,31 +21,23 @@ Deno.serve(async (req) => {
 
     // Verificar que a requisição vem de um usuário autenticado
     const authHeader = req.headers.get("Authorization");
-    console.log("[auth] Authorization header presente:", !!authHeader);
-    console.log("[auth] Começa com Bearer:", authHeader?.startsWith("Bearer "));
-
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Não autorizado" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Extrair user_id diretamente do JWT (Gateway já verificou a assinatura)
-    const token = authHeader.slice(7); // remove "Bearer "
-    console.log("[auth] Token length:", token.length, "| primeiros 20 chars:", token.slice(0, 20));
+    const token = authHeader.slice(7);
 
-    let callerId: string;
-    try {
-      const payload = decodeJwtPayload(token);
-      callerId = payload.sub as string;
-      console.log("[auth] callerId extraído:", callerId);
-      if (!callerId) throw new Error("sub ausente");
-    } catch (e) {
-      console.log("[auth] Erro ao decodificar token:", e);
-      return new Response(JSON.stringify({ error: "Token inválido" }), {
+    // Validar token usando o SDK (mais robusto que decode manual)
+    const { data: { user: callerUser }, error: userErr } = await supabaseAdmin.auth.getUser(token);
+    if (userErr || !callerUser) {
+      return new Response(JSON.stringify({ error: "Token inválido ou expirado" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const callerId = callerUser.id;
 
     // Verificar papel do chamador
     // null = sem registro = admin original (retrocompat) → permite tudo
