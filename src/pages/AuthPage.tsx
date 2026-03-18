@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { STORE_NAME } from "@/config/storeConfig";
 import {
-  Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ShieldCheck, Lock, Package,
+  Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, ChevronLeft, ShieldCheck, Lock, Package, User, Mail, KeyRound,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -93,15 +93,37 @@ function FCheckbox({
   );
 }
 
-function StepBar({ current, total }: { current: number; total: number }) {
+const REGISTER_STEPS = [
+  { label: "Conta",    icon: <Mail className="h-3.5 w-3.5" /> },
+  { label: "Pessoal", icon: <User className="h-3.5 w-3.5" /> },
+  { label: "Senha",   icon: <KeyRound className="h-3.5 w-3.5" /> },
+];
+
+function StepIndicator({ current }: { current: number }) {
   return (
-    <div className="mb-6">
-      <p className="text-xs text-gray-400 mb-2">Passo {current} de {total}</p>
-      <div className="flex gap-1.5">
-        {Array.from({ length: total }).map((_, i) => (
-          <div key={i} className={`h-0.5 flex-1 rounded-full transition-all ${i < current ? "bg-gray-900" : "bg-gray-200"}`} />
-        ))}
-      </div>
+    <div className="flex items-start mb-8">
+      {REGISTER_STEPS.map((s, i) => {
+        const num = i + 1;
+        const isDone   = num < current;
+        const isActive = num === current;
+        return (
+          <div key={s.label} className="flex items-start flex-1">
+            <div className="flex flex-col items-center gap-1.5 flex-1">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all shrink-0
+                ${isDone ? "bg-green-500 text-white" : isActive ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-400"}`}>
+                {isDone ? <CheckCircle2 className="h-4 w-4" /> : s.icon}
+              </div>
+              <span className={`text-[11px] font-medium transition-colors
+                ${isActive ? "text-gray-900" : isDone ? "text-green-600" : "text-gray-400"}`}>
+                {s.label}
+              </span>
+            </div>
+            {i < REGISTER_STEPS.length - 1 && (
+              <div className={`h-px flex-1 mt-4 transition-colors ${isDone ? "bg-green-400" : "bg-gray-200"}`} />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -183,7 +205,7 @@ function LoginForm({ onSuccess, onRegister }: { onSuccess: () => void; onRegiste
 }
 
 /* ══════════════════════════════════════════════════════════════
-   REGISTER FORM — 2 passos
+   REGISTER FORM — 3 etapas
 ══════════════════════════════════════════════════════════════ */
 function RegisterForm({ onSuccess, onLogin }: { onSuccess: () => void; onLogin: () => void }) {
   const { signUp } = useAuth();
@@ -203,12 +225,17 @@ function RegisterForm({ onSuccess, onLogin }: { onSuccess: () => void; onLogin: 
   const [error,     setError]     = useState("");
   const [done,      setDone]      = useState(false);
 
-  function nextStep(e: React.FormEvent) {
+  function goNext(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!name.trim() || !email.trim()) return setError("Nome e e-mail são obrigatórios.");
-    if (!terms) return setError("Aceite os Termos de Uso para continuar.");
-    setStep(2);
+    if (step === 1) {
+      if (!name.trim()) return setError("Nome completo é obrigatório.");
+      if (!email.trim()) return setError("E-mail é obrigatório.");
+      setStep(2);
+    } else if (step === 2) {
+      if (!terms) return setError("Aceite os Termos de Uso para continuar.");
+      setStep(3);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -241,120 +268,111 @@ function RegisterForm({ onSuccess, onLogin }: { onSuccess: () => void; onLogin: 
     );
   }
 
-  /* Passo 1 */
-  if (step === 1) {
-    return (
-      <form onSubmit={nextStep} className="flex flex-col gap-4">
-        <StepBar current={1} total={2} />
+  const isLastStep = step === 3;
 
-        <div className="mb-1">
-          <h1 className="text-2xl font-bold text-gray-900">Criar conta</h1>
-          <p className="text-sm text-gray-400 mt-1">Preencha seus dados para se cadastrar.</p>
-        </div>
-
-        <FInput label="CPF" value={cpf} onChange={(v) => setCpf(maskCPF(v))} placeholder="000.000.000-00" />
-        <FInput label="Nome completo" value={name} onChange={setName} placeholder="Seu nome completo" required />
-
-        <div className="grid grid-cols-2 gap-3">
-          <FInput label="Data de nascimento" value={birthDate} onChange={setBirthDate} type="date" />
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-500">Gênero</label>
-            <div className="relative">
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className={inputCls + " appearance-none pr-8 cursor-pointer"}
-              >
-                <option value="">Selecione</option>
-                <option value="M">Masculino</option>
-                <option value="F">Feminino</option>
-                <option value="O">Outro</option>
-                <option value="N">Prefiro não informar</option>
-              </select>
-              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400"
-                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <FInput label="Telefone" value={phone} onChange={(v) => setPhone(maskPhone(v))} placeholder="(00) 00000-0000" />
-        <FInput label="E-mail" value={email} onChange={setEmail} type="email" placeholder="seu@email.com" required />
-
-        <div className="h-px bg-gray-100 my-1" />
-
-        <FCheckbox checked={offers} onChange={setOffers}>
-          Quero receber ofertas e novidades da {STORE_NAME} por e-mail.
-        </FCheckbox>
-        <FCheckbox checked={terms} onChange={setTerms}>
-          Li e aceito os{" "}
-          <span className="text-gray-900 font-semibold underline underline-offset-1">Termos de uso</span>{" "}e a{" "}
-          <span className="text-gray-900 font-semibold underline underline-offset-1">Política de privacidade.</span>
-        </FCheckbox>
-
-        {error && (
-          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3.5 py-2.5">
-            <AlertCircle className="h-4 w-4 shrink-0" />{error}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          className="w-full bg-[#e8001c] hover:bg-[#c4001a] text-white font-semibold py-2.5 rounded-lg transition-colors text-sm mt-1"
-        >
-          Continuar
-        </button>
-
-        <p className="text-sm text-gray-500 text-center">
-          Já tem conta?{" "}
-          <button type="button" onClick={onLogin}
-            className="font-semibold text-gray-900 hover:text-[#e8001c] transition-colors">
-            Entrar
-          </button>
-        </p>
-      </form>
-    );
-  }
-
-  /* Passo 2 */
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-      <StepBar current={2} total={2} />
+    <form onSubmit={isLastStep ? handleSubmit : goNext} className="flex flex-col gap-5">
+      <StepIndicator current={step} />
 
-      <button
-        type="button"
-        onClick={() => { setStep(1); setError(""); }}
-        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors -mt-1 w-fit"
-      >
-        <ChevronLeft className="h-4 w-4" /> Voltar
-      </button>
-
-      <div className="mb-1">
-        <h1 className="text-2xl font-bold text-gray-900">Crie sua senha</h1>
-        <p className="text-sm text-gray-400 mt-1">Escolha uma senha segura para proteger sua conta.</p>
+      {/* Cabeçalho */}
+      <div className="flex items-start gap-3 -mt-1">
+        {step > 1 && (
+          <button
+            type="button"
+            onClick={() => { setStep(step - 1); setError(""); }}
+            className="mt-1 text-gray-400 hover:text-gray-700 transition-colors shrink-0"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        )}
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {step === 1 && "Criar conta"}
+            {step === 2 && "Dados pessoais"}
+            {step === 3 && "Crie sua senha"}
+          </h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {step === 1 && "Informe seu nome e e-mail para começar."}
+            {step === 2 && "Opcional — você pode preencher depois."}
+            {step === 3 && "Escolha uma senha segura para sua conta."}
+          </p>
+        </div>
       </div>
 
-      <FPasswordInput label="Senha (mín. 6 caracteres)" value={password} onChange={setPassword} />
-      <FPasswordInput label="Confirmar senha" value={confirm} onChange={setConfirm} placeholder="Repita a senha" />
+      {/* ── Etapa 1: Conta ─────────────────────────────────────── */}
+      {step === 1 && (
+        <div className="flex flex-col gap-4">
+          <FInput label="Nome completo" value={name} onChange={setName} placeholder="Seu nome completo" required />
+          <FInput label="E-mail" value={email} onChange={setEmail} type="email" placeholder="seu@email.com" required />
+          <FInput label="CPF" value={cpf} onChange={(v) => setCpf(maskCPF(v))} placeholder="000.000.000-00" />
+        </div>
+      )}
 
-      {/* Força da senha */}
-      <div className="flex flex-col gap-1.5">
-        {[
-          { ok: password.length >= 6,   label: "Pelo menos 6 caracteres" },
-          { ok: /[A-Z]/.test(password), label: "Uma letra maiúscula"     },
-          { ok: /[0-9]/.test(password), label: "Um número"               },
-        ].map(({ ok, label }) => (
-          <div key={label} className={`flex items-center gap-2 text-xs transition-colors ${ok ? "text-green-600" : "text-gray-400"}`}>
-            <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 transition-colors ${ok ? "bg-green-500" : "bg-gray-200"}`}>
-              {ok && <svg className="w-2 h-2 text-white" viewBox="0 0 10 8" fill="none">
-                <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>}
+      {/* ── Etapa 2: Dados pessoais ─────────────────────────────── */}
+      {step === 2 && (
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <FInput label="Data de nascimento" value={birthDate} onChange={setBirthDate} type="date" />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-500">Gênero</label>
+              <div className="relative">
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className={inputCls + " appearance-none pr-8 cursor-pointer"}
+                >
+                  <option value="">Selecione</option>
+                  <option value="M">Masculino</option>
+                  <option value="F">Feminino</option>
+                  <option value="O">Outro</option>
+                  <option value="N">Prefiro não informar</option>
+                </select>
+                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </div>
             </div>
-            {label}
           </div>
-        ))}
-      </div>
+          <FInput label="Telefone" value={phone} onChange={(v) => setPhone(maskPhone(v))} placeholder="(00) 00000-0000" />
+
+          <div className="h-px bg-gray-100" />
+
+          <FCheckbox checked={offers} onChange={setOffers}>
+            Quero receber ofertas e novidades da {STORE_NAME} por e-mail.
+          </FCheckbox>
+          <FCheckbox checked={terms} onChange={setTerms}>
+            Li e aceito os{" "}
+            <span className="text-gray-900 font-semibold underline underline-offset-1">Termos de uso</span>{" "}e a{" "}
+            <span className="text-gray-900 font-semibold underline underline-offset-1">Política de privacidade.</span>
+          </FCheckbox>
+        </div>
+      )}
+
+      {/* ── Etapa 3: Senha ─────────────────────────────────────── */}
+      {step === 3 && (
+        <div className="flex flex-col gap-4">
+          <FPasswordInput label="Senha (mín. 6 caracteres)" value={password} onChange={setPassword} />
+          <FPasswordInput label="Confirmar senha" value={confirm} onChange={setConfirm} placeholder="Repita a senha" />
+
+          <div className="flex flex-col gap-2 p-3.5 bg-gray-50 rounded-lg border border-gray-100">
+            {[
+              { ok: password.length >= 6,   label: "Pelo menos 6 caracteres" },
+              { ok: /[A-Z]/.test(password), label: "Uma letra maiúscula"     },
+              { ok: /[0-9]/.test(password), label: "Um número"               },
+            ].map(({ ok, label }) => (
+              <div key={label} className={`flex items-center gap-2 text-xs transition-colors ${ok ? "text-green-600" : "text-gray-400"}`}>
+                <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 transition-colors ${ok ? "bg-green-500" : "bg-gray-200"}`}>
+                  {ok && <svg className="w-2 h-2 text-white" viewBox="0 0 10 8" fill="none">
+                    <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>}
+                </div>
+                {label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3.5 py-2.5">
@@ -366,11 +384,21 @@ function RegisterForm({ onSuccess, onLogin }: { onSuccess: () => void; onLogin: 
         type="submit"
         disabled={loading}
         className="w-full bg-[#e8001c] hover:bg-[#c4001a] text-white font-semibold py-2.5 rounded-lg
-          transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-60 mt-1"
+          transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-60"
       >
         {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-        Criar minha conta
+        {step < 3 ? "Continuar" : "Criar minha conta"}
       </button>
+
+      {step === 1 && (
+        <p className="text-sm text-gray-500 text-center">
+          Já tem conta?{" "}
+          <button type="button" onClick={onLogin}
+            className="font-semibold text-gray-900 hover:text-[#e8001c] transition-colors">
+            Entrar
+          </button>
+        </p>
+      )}
     </form>
   );
 }
@@ -444,9 +472,9 @@ export default function AuthPage() {
         </header>
 
         <div className="flex-1 flex items-center justify-center px-5 py-12">
-          <div className="w-full max-w-sm">
+          <div className="w-full max-w-lg">
             {/* Card */}
-            <div className="bg-white border border-gray-100 rounded-2xl p-8 shadow-sm">
+            <div className="bg-white border border-gray-100 rounded-2xl p-10 shadow-sm">
               {tab === "login" ? (
                 <LoginForm
                   onSuccess={handleSuccess}
