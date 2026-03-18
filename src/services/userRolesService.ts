@@ -106,26 +106,35 @@ const EDGE_URL  = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-cola
 const ANON_KEY  = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 const SUPA_URL  = import.meta.env.VITE_SUPABASE_URL as string;
 
-/** Lê o access_token do localStorage (mesmo mecanismo do supabaseRest.ts) */
-function getTokenFromStorage(): string {
+async function getAccessToken(): Promise<string> {
+  // 1. Tenta getSession (fonte mais confiável no Supabase JS v2)
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) return session.access_token;
+
+  // 2. Força refresh e tenta novamente
+  const { data: refreshData } = await supabase.auth.refreshSession();
+  if (refreshData.session?.access_token) return refreshData.session.access_token;
+
+  // 3. Fallback: lê direto do localStorage (compatibilidade)
   try {
     const ref = SUPA_URL.replace(/^https?:\/\//, "").split(".")[0];
     const raw = localStorage.getItem(`sb-${ref}-auth-token`);
-    if (!raw) return "";
-    const session = JSON.parse(raw) as Record<string, unknown>;
-    return (session.access_token as string) ?? "";
-  } catch {
-    return "";
-  }
+    if (raw) {
+      const stored = JSON.parse(raw) as Record<string, unknown>;
+      // Supabase v2 pode ter access_token direto ou dentro de currentSession
+      const token = (stored.access_token
+        ?? (stored.currentSession as Record<string, unknown>)?.access_token) as string | undefined;
+      if (token) return token;
+    }
+  } catch { /* silencioso */ }
+
+  return "";
 }
 
 async function callEdge(body: object): Promise<Record<string, unknown>> {
-  // Tenta localStorage primeiro (síncrono, evita travamento); fallback para getSession
-  let token = getTokenFromStorage();
-  if (!token) {
-    const { data: { session } } = await supabase.auth.getSession();
-    token = session?.access_token ?? "";
-  }
+  const token = await getAccessToken();
+
+  if (!token) throw new Error("Sessão expirada. Faça login novamente no painel.");
 
   const res = await fetch(EDGE_URL, {
     method:  "POST",
