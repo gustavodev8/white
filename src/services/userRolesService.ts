@@ -15,13 +15,31 @@ export interface UserRole {
 }
 
 // Abas que podem ser liberadas para colaboradores (admin vê tudo)
+// configuracoes e colaboradores são exclusivas do admin
 export const ABAS_COLABORADOR: { id: string; label: string; grupo: string }[] = [
+  // Geral
+  { id: "dashboard",   label: "Dashboard",           grupo: "Geral"       },
+  { id: "pedidos",     label: "Pedidos",             grupo: "Geral"       },
+  // Atendimento
   { id: "pdv",         label: "Nova Venda (PDV)",    grupo: "Atendimento" },
-  { id: "pedidos",     label: "Pedidos",             grupo: "Atendimento" },
   { id: "clientes",    label: "Clientes",            grupo: "Atendimento" },
+  // Financeiro
   { id: "caixa",       label: "Fechamento de Caixa", grupo: "Financeiro"  },
   { id: "fluxo-caixa", label: "Fluxo de Caixa",      grupo: "Financeiro"  },
+  { id: "contas",      label: "Contas",              grupo: "Financeiro"  },
+  { id: "metas",       label: "Metas",               grupo: "Financeiro"  },
+  { id: "relatorios",  label: "Relatórios",          grupo: "Financeiro"  },
+  { id: "comissoes",   label: "Comissões",           grupo: "Financeiro"  },
+  // Marketing
+  { id: "cupons",      label: "Cupons",              grupo: "Marketing"   },
+  // Sistema
+  { id: "configuracoes", label: "Configurações",     grupo: "Sistema"     },
+  // Catálogo
   { id: "estoque",     label: "Estoque",             grupo: "Catálogo"    },
+  { id: "produtos",    label: "Produtos",            grupo: "Catálogo"    },
+  { id: "fornecedores",label: "Fornecedores",        grupo: "Catálogo"    },
+  { id: "secoes",      label: "Seções",              grupo: "Catálogo"    },
+  { id: "banners",     label: "Banners",             grupo: "Catálogo"    },
 ];
 
 // ── Buscar papel do usuário logado ────────────────────────────────────────────

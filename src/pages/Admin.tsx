@@ -3129,7 +3129,15 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Abas permitidas</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Abas permitidas</p>
+                  <button type="button" className="text-xs text-primary hover:underline"
+                    onClick={() => setAcessoPerms(
+                      acessoPerms.length === ABAS_COLABORADOR.length ? [] : ABAS_COLABORADOR.map(a => a.id)
+                    )}>
+                    {acessoPerms.length === ABAS_COLABORADOR.length ? "Desmarcar tudo" : "Selecionar tudo"}
+                  </button>
+                </div>
                 <div className="space-y-1.5">
                   {ABAS_COLABORADOR.map(aba => (
                     <label key={aba.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-secondary cursor-pointer">
@@ -3194,7 +3202,15 @@ function ColaboradoresTab({ isActive, isAdmin = true }: { isActive: boolean; isA
 
               {/* Permissões */}
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Abas permitidas</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Abas permitidas</p>
+                  <button type="button" className="text-xs text-primary hover:underline"
+                    onClick={() => setAcessoPerms(
+                      acessoPerms.length === ABAS_COLABORADOR.length ? [] : ABAS_COLABORADOR.map(a => a.id)
+                    )}>
+                    {acessoPerms.length === ABAS_COLABORADOR.length ? "Desmarcar tudo" : "Selecionar tudo"}
+                  </button>
+                </div>
                 <div className="space-y-1.5">
                   {ABAS_COLABORADOR.map(aba => (
                     <label key={aba.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-secondary cursor-pointer">
