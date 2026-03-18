@@ -84,24 +84,41 @@ export async function toggleAcesso(userId: string, ativo: boolean): Promise<void
 
 // ── Funções que chamam a Edge Function (operações que precisam de service role)
 
-const EDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-colaborador-user`;
+const EDGE_URL  = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-colaborador-user`;
+const ANON_KEY  = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const SUPA_URL  = import.meta.env.VITE_SUPABASE_URL as string;
+
+/** Lê o access_token do localStorage (mesmo mecanismo do supabaseRest.ts) */
+function getTokenFromStorage(): string {
+  try {
+    const ref = SUPA_URL.replace(/^https?:\/\//, "").split(".")[0];
+    const raw = localStorage.getItem(`sb-${ref}-auth-token`);
+    if (!raw) return "";
+    const session = JSON.parse(raw) as Record<string, unknown>;
+    return (session.access_token as string) ?? "";
+  } catch {
+    return "";
+  }
+}
 
 async function callEdge(body: object): Promise<Record<string, unknown>> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token   = session?.access_token ?? "";
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+  // Tenta localStorage primeiro (síncrono, evita travamento); fallback para getSession
+  let token = getTokenFromStorage();
+  if (!token) {
+    const { data: { session } } = await supabase.auth.getSession();
+    token = session?.access_token ?? "";
+  }
 
   const res = await fetch(EDGE_URL, {
     method:  "POST",
     headers: {
       "Content-Type":  "application/json",
-      "apikey":        anonKey,          // obrigatório para o gateway do Supabase
+      "apikey":        ANON_KEY,
       "Authorization": `Bearer ${token}`,
     },
     body: JSON.stringify(body),
   });
 
-  // "failed to fetch" geralmente = função não deployada ou URL errada
   const json = await res.json() as Record<string, unknown>;
   if (!res.ok) throw new Error((json.error as string) ?? `Erro ${res.status}`);
   return json;
