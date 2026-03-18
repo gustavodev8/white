@@ -119,6 +119,50 @@ export async function createColaboradorUser(input: {
   return result.user_id as string;
 }
 
+// ── Criar conta de admin ──────────────────────────────────────────────────────
+
+export async function createAdminUser(input: {
+  email:    string;
+  password: string;
+  name:     string;
+}): Promise<string> {
+  const result = await callEdge({ action: "create", ...input, role: "admin", permissoes: [] });
+  return result.user_id as string;
+}
+
+// ── Listar admins ─────────────────────────────────────────────────────────────
+
+export interface AdminEntry {
+  id:         string;
+  user_id:    string;
+  ativo:      boolean;
+  created_at: string;
+  email?:     string;
+  name?:      string;
+}
+
+export async function fetchAdmins(): Promise<AdminEntry[]> {
+  const { data, error } = await supabase
+    .from("user_roles")
+    .select("id, user_id, ativo, created_at, profiles(name, email)")
+    .eq("role", "admin")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    if (error.code === "42P01" || error.message.includes("does not exist")) return [];
+    throw error;
+  }
+
+  return (data ?? []).map((r: any) => ({
+    id:         r.id,
+    user_id:    r.user_id,
+    ativo:      r.ativo,
+    created_at: r.created_at,
+    name:       r.profiles?.name  ?? undefined,
+    email:      r.profiles?.email ?? undefined,
+  }));
+}
+
 // ── Alterar senha ─────────────────────────────────────────────────────────────
 
 export async function updatePassword(userId: string, password: string): Promise<void> {
