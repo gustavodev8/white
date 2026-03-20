@@ -19,7 +19,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-[200] bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-[500] bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -37,7 +37,7 @@ const DialogContent = React.forwardRef<
       ref={ref}
       className={cn(
         // ── Mobile: bottom sheet ──────────────────────────────────────
-        "fixed bottom-0 left-0 right-0 z-[201] w-full bg-background border-t shadow-xl",
+        "fixed bottom-0 left-0 right-0 z-[501] w-full bg-background border-t shadow-xl",
         "rounded-t-2xl",
         "max-h-[92vh] overflow-hidden",
         "flex flex-col",
