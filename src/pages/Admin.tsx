@@ -7034,7 +7034,7 @@ function AdminDashboard({ userRole }: { userRole: UserRole | null }) {
               onClick={() => setSidebarOpen(false)}
             />
             <aside
-              className={`fixed left-0 top-0 bottom-0 w-64 bg-gray-950 border-r border-gray-800 z-[61] overflow-y-auto lg:hidden pb-20 transition-transform duration-300 ease-in-out ${sidebarShown ? "translate-x-0" : "-translate-x-full"}`}
+              className={`fixed left-0 top-0 bottom-0 w-64 bg-gray-950 border-r border-gray-800 z-[61] overflow-y-auto lg:hidden transition-transform duration-300 ease-in-out ${sidebarShown ? "translate-x-0" : "-translate-x-full"}`}
               onTransitionEnd={() => { if (!sidebarOpen) setSidebarMounted(false); }}
             >
               <SidebarNav />
@@ -7044,7 +7044,7 @@ function AdminDashboard({ userRole }: { userRole: UserRole | null }) {
         )}
 
         {/* ── Conteúdo principal ─────────────────────────────────────── */}
-        <main className="flex-1 min-w-0 p-3 md:p-6 pb-20 lg:pb-6 overflow-y-auto overflow-x-hidden">
+        <main className="flex-1 min-w-0 p-3 md:p-6 overflow-y-auto overflow-x-hidden">
 
           {/* Cabeçalho da página */}
           <div className="mb-4 md:mb-6">
