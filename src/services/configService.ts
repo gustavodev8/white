@@ -71,7 +71,7 @@ export async function saveConfigCartao(cfg: ConfigCartao): Promise<void> {
   ];
   await Promise.all(
     rows.map((r) =>
-      restPatch("config", { valor: r.valor, updated_at }, { id: `eq.${r.id}` }),
+      restPatch("config", { column: "id", value: r.id }, { valor: r.valor, updated_at }),
     ),
   );
 }

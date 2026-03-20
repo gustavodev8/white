@@ -96,9 +96,9 @@ import {
   fetchUserRole, fetchColaboradorAcesso,
   createColaboradorUser, updatePermissoes, toggleAcesso,
   updatePassword, deleteColaboradorUser, gerarSenhaAleatoria,
-  ABAS_COLABORADOR, fetchAdmins, promoteToAdmin,
+  ABAS_COLABORADOR,
 } from "@/services/userRolesService";
-import type { UserRole, AdminEntry } from "@/services/userRolesService";
+import type { UserRole } from "@/services/userRolesService";
 import {
   fetchOuCriarCaixaHoje, fetchFechamentos, fetchCaixasPendentes,
   salvarCaixa, calcularResumoHoje,
@@ -6084,112 +6084,6 @@ function ContasTab({ isActive }: { isActive: boolean }) {
   );
 }
 
-// ─── Seção Administradores (dentro do ConfigTab) ──────────────────────────────
-function AdminsSection() {
-  const [admins,  setAdmins]  = useState<AdminEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [open,    setOpen]    = useState(false);
-  const [email,   setEmail]   = useState("");
-  const [saving,  setSaving]  = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchAdmins().then(setAdmins).catch(() => {}).finally(() => setLoading(false));
-  }, []);
-
-  async function handlePromote(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email.trim()) return;
-    setSaving(true);
-    try {
-      await promoteToAdmin(email.trim());
-      toast.success("Usuário promovido a administrador!");
-      setAdmins(await fetchAdmins());
-      setOpen(false);
-      setEmail("");
-    } catch (err: any) {
-      toast.error(err.message ?? "Erro ao promover usuário.");
-    } finally { setSaving(false); }
-  }
-
-  async function handleToggle(entry: AdminEntry) {
-    try {
-      await toggleAcesso(entry.user_id, !entry.ativo);
-      setAdmins(prev => prev.map(a => a.user_id === entry.user_id ? { ...a, ativo: !a.ativo } : a));
-      toast.success(entry.ativo ? "Acesso revogado." : "Acesso reativado.");
-    } catch { toast.error("Erro ao alterar acesso."); }
-  }
-
-  return (
-    <div className="bg-background border border-border rounded-xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4 text-foreground" />
-          <h3 className="font-semibold text-sm">Administradores</h3>
-          <Badge variant="secondary" className="text-xs">{admins.length}</Badge>
-        </div>
-        <Button size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setOpen(true)}>
-          <UserPlus className="h-3.5 w-3.5" /> Adicionar admin
-        </Button>
-      </div>
-
-      <div className="divide-y divide-border">
-        {loading ? (
-          <p className="text-sm text-muted-foreground px-5 py-4">Carregando...</p>
-        ) : admins.length === 0 ? (
-          <p className="text-sm text-muted-foreground px-5 py-4">Nenhum administrador adicional cadastrado.</p>
-        ) : admins.map(a => (
-          <div key={a.id} className="flex items-center justify-between px-5 py-3.5">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">{a.name ?? "—"}</p>
-                <p className="text-xs text-muted-foreground">{a.email ?? a.user_id}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Badge variant={a.ativo ? "default" : "secondary"} className="text-xs">
-                {a.ativo ? "Ativo" : "Inativo"}
-              </Badge>
-              <Switch checked={a.ativo} onCheckedChange={() => handleToggle(a)} />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Modal promover a admin */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5" /> Adicionar Administrador
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handlePromote} className="space-y-4 pt-2">
-            <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg px-4 py-3">
-              O usuário precisa já ter uma conta no sistema. Informe o e-mail cadastrado para conceder acesso de administrador.
-            </div>
-            <div>
-              <Label className="text-xs">E-mail da conta</Label>
-              <Input className="mt-1" type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="email@exemplo.com" required />
-            </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={saving} className="gap-1.5">
-                {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                {saving ? "Salvando..." : "Confirmar"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
 // ─── Aba Configurações ────────────────────────────────────────────────────────
 function ConfigTab({ isActive }: { isActive: boolean }) {
   const [cfg,     setCfg]     = useState<ConfigCartao>({ taxa_pct: 2.5, parcelas_max: 6, juros_a_partir_de: 2 });
@@ -6320,7 +6214,6 @@ function ConfigTab({ isActive }: { isActive: boolean }) {
         </div>
       </div>
 
-      <AdminsSection />
 
     </div>
   );
