@@ -107,22 +107,7 @@ import type { CaixaFechamento } from "@/services/caixaService";
 import { produtosVencendoEm } from "@/services/estoqueService";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-
-// ─── Formatadores ─────────────────────────────────────────────────────────────
-const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-  });
-}
-
-function fmtDateTime(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
+import { fmt, fmtDate, fmtDateTime, PAYMENT_LABELS } from "@/lib/formatters";
 
 // ─── Tipo produto admin ───────────────────────────────────────────────────────
 interface AdminProduct {
@@ -268,8 +253,10 @@ function DashboardTab({ isActive }: { isActive: boolean }) {
       const saidas   = fluxoData.filter(f => f.tipo === "saida").reduce((s, f) => s + f.valor, 0);
       setFluxoMes({ entradas, saidas });
       loaded.current = true;
-    } catch { /* silencioso */ }
-    finally { setLoading(false); }
+    } catch (err) {
+      console.error("[DashboardTab] Erro ao carregar dados:", err);
+      toast.error("Erro ao carregar o dashboard.");
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -662,11 +649,7 @@ function AdminOrdersTab({ isActive, isAdmin = true }: { isActive: boolean; isAdm
     return matchStatus && matchSearch;
   });
 
-  const paymentLabel: Record<string, string> = {
-    pix:    "PIX",
-    credit: "Cartão",
-    boleto: "Boleto",
-  };
+  const paymentLabel = PAYMENT_LABELS;
 
   return (
     <>
@@ -4586,11 +4569,7 @@ function CaixaTab({ isActive }: { isActive: boolean }) {
   const [migracaoFalta,   setMigracaoFalta]   = useState(false);
   const [verTodosHist,    setVerTodosHist]    = useState(false);
 
-  const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  const fmtData = (iso: string) => {
-    const [y, m, d] = iso.split("-");
-    return `${d}/${m}/${y}`;
-  };
+  const fmtData = fmtDate;
 
   const load = useCallback(async () => {
     setLoading(true);

@@ -2,13 +2,11 @@ import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/hooks/useCart";
 import type { Product } from "@/types";
+import { fmt } from "@/lib/formatters";
 
 interface ProductCardProps {
   product: Product;
 }
-
-const fmt = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 function installments(price: number): string | null {
   if (price < 30) return null;

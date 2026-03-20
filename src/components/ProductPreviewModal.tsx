@@ -2,9 +2,7 @@ import { X, ArrowDown, Plus, ExternalLink, ShoppingCart } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useCart } from "@/hooks/useCart";
 import type { Product } from "@/types";
-
-const fmt = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+import { fmt } from "@/lib/formatters";
 
 interface ProductPreviewModalProps {
   product: Product | null;

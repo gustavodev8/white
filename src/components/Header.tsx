@@ -12,9 +12,7 @@ import CartDrawer from "@/components/CartDrawer";
 import ProductPreviewModal from "@/components/ProductPreviewModal";
 import type { Product } from "@/types";
 import { STORE_NAME, STORE_SLOGAN } from "@/config/storeConfig";
-
-const fmt = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+import { fmt } from "@/lib/formatters";
 
 const NAV_LINKS = [
   { label: "FEMININO",   slug: "feminino",   highlight: false },

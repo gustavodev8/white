@@ -63,7 +63,6 @@ export async function fetchConfig(): Promise<AppConfig> {
 
 // ─── Save ─────────────────────────────────────────────────────────────────────
 export async function saveConfigCartao(cfg: ConfigCartao): Promise<void> {
-  const updated_at = new Date().toISOString();
   const rows = [
     { id: "taxa_cartao_pct",               valor: String(cfg.taxa_pct) },
     { id: "taxa_cartao_parcelas_max",       valor: String(cfg.parcelas_max) },
@@ -71,7 +70,7 @@ export async function saveConfigCartao(cfg: ConfigCartao): Promise<void> {
   ];
   await Promise.all(
     rows.map((r) =>
-      restPatch("config", { column: "id", value: r.id }, { valor: r.valor, updated_at }),
+      restPatch("config", { column: "id", value: r.id }, { valor: r.valor }),
     ),
   );
 }

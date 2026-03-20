@@ -3,9 +3,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useCart, cartTotal } from "@/hooks/useCart";
-
-const fmt = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+import { fmt } from "@/lib/formatters";
 
 interface CartDrawerProps {
   open: boolean;

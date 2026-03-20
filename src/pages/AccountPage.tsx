@@ -10,9 +10,7 @@ import { fetchUserOrders, updateOrderStatus, STATUS_LABEL, STATUS_COLOR } from "
 import { isLocalOrder } from "@/services/shippingService";
 import Header from "@/components/Header";
 import type { Order } from "@/services/ordersService";
-
-const fmt = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+import { fmt } from "@/lib/formatters";
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("pt-BR", {
