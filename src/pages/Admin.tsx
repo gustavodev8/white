@@ -108,6 +108,10 @@ import { produtosVencendoEm } from "@/services/estoqueService";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { fmt, fmtDate, fmtDateTime, PAYMENT_LABELS } from "@/lib/formatters";
+import {
+  fetchCategoryHighlights, saveCategoryHighlights, DEFAULT_CATEGORIES,
+} from "@/services/categoryHighlightService";
+import type { CategoryCard } from "@/services/categoryHighlightService";
 
 // ─── Tipo produto admin ───────────────────────────────────────────────────────
 interface AdminProduct {
@@ -1945,7 +1949,112 @@ function BannersTab({ isActive }: { isActive: boolean }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CategoryHighlightAdmin />
     </>
+  );
+}
+
+// ─── Categorias em Destaque (dentro do BannersTab) ────────────────────────────
+function CategoryHighlightAdmin() {
+  const [cats,    setCats]    = useState<CategoryCard[]>(DEFAULT_CATEGORIES);
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
+
+  useEffect(() => {
+    fetchCategoryHighlights().then(c => { setCats(c); setLoading(false); });
+  }, []);
+
+  function update(id: string, field: keyof CategoryCard, value: string | boolean) {
+    setCats(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await saveCategoryHighlights(cats);
+      toast.success("Categorias em destaque salvas!");
+    } catch { toast.error("Erro ao salvar categorias."); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="bg-background border border-border rounded-xl overflow-hidden mt-8">
+      <div className="px-5 py-4 border-b border-border flex items-center gap-2">
+        <LayoutList className="h-4 w-4 text-foreground" />
+        <h3 className="font-semibold text-sm">Categorias em Destaque</h3>
+        <span className="text-xs text-muted-foreground ml-1">— seção "Por Categoria" na loja</span>
+      </div>
+
+      <div className="divide-y divide-border">
+        {loading ? (
+          <p className="text-sm text-muted-foreground px-5 py-4">Carregando...</p>
+        ) : cats.map(cat => (
+          <div key={cat.id} className="px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-4">
+            {/* Preview da cor */}
+            <div
+              className="w-10 h-10 rounded-lg shrink-0 border border-border"
+              style={{ backgroundColor: cat.bg }}
+            />
+
+            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Subtítulo */}
+              <div>
+                <label className="text-[11px] text-muted-foreground mb-1 block">Subtítulo</label>
+                <Input
+                  value={cat.subtitle}
+                  onChange={e => update(cat.id, "subtitle", e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              {/* Nome principal */}
+              <div>
+                <label className="text-[11px] text-muted-foreground mb-1 block">Nome</label>
+                <Input
+                  value={cat.label}
+                  onChange={e => update(cat.id, "label", e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              {/* Cor de fundo */}
+              <div>
+                <label className="text-[11px] text-muted-foreground mb-1 block">Cor de fundo</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={cat.bg}
+                    onChange={e => update(cat.id, "bg", e.target.value)}
+                    className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent p-0.5"
+                  />
+                  <Input
+                    value={cat.bg}
+                    onChange={e => update(cat.id, "bg", e.target.value)}
+                    className="h-8 text-sm font-mono uppercase"
+                    maxLength={7}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Visível toggle */}
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-muted-foreground">Visível</span>
+              <Switch
+                checked={cat.visible}
+                onCheckedChange={v => update(cat.id, "visible", v)}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="px-5 py-4 border-t border-border">
+        <Button onClick={handleSave} disabled={saving} className="gap-1.5">
+          {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {saving ? "Salvando..." : "Salvar categorias"}
+        </Button>
+      </div>
+    </div>
   );
 }
 
