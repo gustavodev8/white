@@ -7059,11 +7059,14 @@ function AdminDashboard({ userRole }: { userRole: UserRole | null }) {
 }
 
 // ─── Pagina principal ─────────────────────────────────────────────────────────
+const DEMO_MODE = import.meta.env.VITE_ADMIN_DEMO === "true";
+
 export default function Admin() {
   const [session,  setSession]  = useState<Session | null | undefined>(undefined);
   const [userRole, setUserRole] = useState<UserRole | null | undefined>(undefined);
 
   useEffect(() => {
+    if (DEMO_MODE) return;
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => subscription.unsubscribe();
@@ -7071,6 +7074,7 @@ export default function Admin() {
 
   // Buscar papel do usuário sempre que a sessão mudar
   useEffect(() => {
+    if (DEMO_MODE) return;
     if (!session) { setUserRole(undefined); return; }
     fetchUserRole(session.user.id)
       .then(role => {
@@ -7083,6 +7087,17 @@ export default function Admin() {
       })
       .catch(() => setUserRole(null)); // erro na tabela (ainda não migrou) = admin
   }, [session]);
+
+  if (DEMO_MODE) {
+    return (
+      <div className="relative">
+        <div className="sticky top-0 z-50 bg-yellow-500 text-yellow-950 text-xs font-semibold text-center py-1.5 px-4">
+          Modo Demo — banco de dados desconectado. Os dados não serão salvos.
+        </div>
+        <AdminDashboard userRole={null} />
+      </div>
+    );
+  }
 
   if (session === undefined || (session && userRole === undefined)) return (
     <div className="min-h-screen flex items-center justify-center bg-secondary">
