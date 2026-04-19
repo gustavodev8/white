@@ -14,6 +14,8 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 const REST_TIMEOUT_MS = 10_000;
 
+const DEMO_MODE = import.meta.env.VITE_ADMIN_DEMO === "true";
+
 // ─── Token ───────────────────────────────────────────────────────────────────
 
 /**
@@ -71,6 +73,7 @@ export async function restGet<T = Record<string, unknown>>(
   table: string,
   params: Record<string, string> = {},
 ): Promise<T[]> {
+  if (DEMO_MODE) return [];
   const token = getToken();
 
   const url = new URL(`${SUPABASE_URL}/rest/v1/${table}`);
@@ -115,6 +118,7 @@ export async function restUpsert(
   table: string,
   body: Record<string, unknown>,
 ): Promise<void> {
+  if (DEMO_MODE) return;
   const token = getToken();
   const url   = `${SUPABASE_URL}/rest/v1/${table}`;
 
@@ -151,6 +155,7 @@ export async function restPostMany(
   table: string,
   rows: Record<string, unknown>[],
 ): Promise<void> {
+  if (DEMO_MODE) return;
   const token = getToken();
   const url   = `${SUPABASE_URL}/rest/v1/${table}`;
 
@@ -187,6 +192,7 @@ export async function restPost<T = Record<string, unknown>>(
   table: string,
   body: Record<string, unknown>,
 ): Promise<T> {
+  if (DEMO_MODE) throw new Error("Modo Demo: banco de dados desconectado.");
   const token = getToken();
   const url   = `${SUPABASE_URL}/rest/v1/${table}`;
 
@@ -234,6 +240,7 @@ export async function restPatch<T = Record<string, unknown>>(
   body: Record<string, unknown>,
   returnData = false,
 ): Promise<T | void> {
+  if (DEMO_MODE) return;
   const token = getToken();
   const url   = `${SUPABASE_URL}/rest/v1/${table}?${filter.column}=eq.${encodeURIComponent(filter.value)}`;
 
@@ -282,6 +289,7 @@ export async function restDelete(
   table: string,
   filter: { column: string; value: string },
 ): Promise<void> {
+  if (DEMO_MODE) return;
   const token = getToken();
   const url   = `${SUPABASE_URL}/rest/v1/${table}?${filter.column}=eq.${encodeURIComponent(filter.value)}`;
 
