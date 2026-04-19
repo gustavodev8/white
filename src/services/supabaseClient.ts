@@ -5,6 +5,7 @@ const key  = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 /** Retorna true se as variáveis de ambiente do Supabase estão configuradas */
 export function isSupabaseConfigured(): boolean {
+  if (import.meta.env.VITE_ADMIN_DEMO === "true") return false;
   return Boolean(url && key && url.startsWith("https://") && key.length > 10);
 }
 
